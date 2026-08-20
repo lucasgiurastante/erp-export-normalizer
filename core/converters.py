@@ -17,7 +17,10 @@ def decode_field(raw: bytes, field: Field, default_codepage: str) -> str:
 
 
 def convert_field(raw: bytes, field: Field, default_codepage: str) -> object:
-    text = decode_field(raw, field, default_codepage)
+    return convert_text(decode_field(raw, field, default_codepage), field)
+
+
+def convert_text(text: str, field: Field) -> object:
     if field.type == "string":
         return text.strip()
     if field.type == "date":
@@ -56,6 +59,9 @@ def convert_decimal(text: str, field: Field) -> decimal.Decimal:
         raise ConversionError(f"invalid decimal {text!r}") from exc
     if negative:
         value = -value
-    if field.scale:
+    # `scale` repositions implicit decimals (fixed-width integers like
+    # "12345" with scale 2 -> 123.45). Explicit decimal points already carry
+    # their precision and must not be shifted again (delimited formats).
+    if field.scale and "." not in stripped:
         value = value.scaleb(-field.scale)
     return value

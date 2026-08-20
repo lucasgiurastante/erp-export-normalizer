@@ -58,7 +58,9 @@ class Detector:
     def _score(schema: Schema, records: list[bytes]) -> int:
         """Score = points from records that parse perfectly. A record must be
         fully valid (record length + every field converts) to contribute,
-        so a total of 0 means 'no match'."""
+        so a total of 0 means 'no match'. Delimited schemas are not scored."""
+        if schema.record_length is None:
+            return 0
         val = Validator(schema)
         total = 0
         for record in records:

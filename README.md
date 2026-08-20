@@ -18,8 +18,20 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   (UTF-8, CP850, CP1252, Latin-1, EBCDIC-CP037).
 - **Six output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
   `decimal128` for financial values), and Excel (write-only, bounded memory).
+- **Fixed-width and delimited** — byte-offset slicing or delimiter splitting
+  (`,`/`\t`/`;`/`|`), with optional header rows.
 - **Auto-detection** — omit `--schema`; the tool scores the built-in schema
   library against your file and picks the best match.
+- **Schema generation** — `generate-schema` infers a delimited schema (names,
+  types, scale) from an example file.
+- **Batch + parallel** — glob inputs with `--output-dir`; `--workers N`
+  parallelizes validation with byte-identical output.
+- **Business rules** — schema-level `sum` and `balance` (debits = credits)
+  checks, evaluated in O(1) memory.
+- **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
+  hashes, schema version, counts, timestamp).
+- **DataFrame integration** — `read_erp()` loads exports straight into
+  Pandas or Polars.
 - **`--dry-run`** — validate without writing output.
 - **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
 - **Deterministic** — identical input produces identical output, every run.
@@ -33,9 +45,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -e .          # core: JSON/CSV/NDJSON/SQL
-pip install -e ".[parquet]"  # + Parquet (pyarrow)
-pip install -e ".[excel]"    # + Excel (openpyxl)
-pip install -e ".[all]"      # everything
+pip install -e ".[parquet]"    # + Parquet (pyarrow)
+pip install -e ".[excel]"      # + Excel (openpyxl)
+pip install -e ".[dataframe]"  # + read_erp() (pandas, polars)
+pip install -e ".[all]"        # everything
 ```
 
 ## Quick start
@@ -61,6 +74,26 @@ erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.xl
 
 # per-line diagnostics
 erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --verbose --dry-run
+```
+
+### Schema generation, batch, and audit
+
+```bash
+# infer a delimited schema from an example file, then convert with it
+erp-normalize generate-schema example.csv --output example_schema.yaml
+erp-normalize --schema example_schema.yaml --input example.csv --output example.json
+
+# batch-convert a whole directory of exports
+erp-normalize --schema formats/jde_ar.yaml --input "exports/*.txt" --output-dir converted/ --format parquet
+
+# parallel validation (byte-identical output to serial)
+erp-normalize --schema formats/jde_ar.yaml --input big.txt --output big.json --workers 4
+
+# audit evidence sidecar (<output>.sha256)
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --checksum
+
+# validate the schema library
+erp-normalize registry formats/
 ```
 
 A conversion run prints a summary to stdout:
@@ -116,6 +149,28 @@ defaults to `export`).
 Schemas are validated at load time: required keys, duplicate names, overlapping
 fields, and overflows past `record_length` are rejected with a clear message.
 
+### Business rules
+
+Rules run over all valid records in O(1) memory and are checked at the end;
+violations exit with code 3 and print per-rule messages.
+
+```yaml
+rules:
+  - {type: sum, field: amount, expected: 123456.78}   # control total
+  - {type: balance, positive: debit, negative: credit} # debits = credits
+```
+
+### DataFrame integration
+
+```python
+from core.io import read_erp
+
+df = read_erp("export.txt", schema="formats/jde_ar.yaml")   # pandas
+pl_df = read_erp("export.txt", backend="polars")            # auto-detect + polars
+```
+
+`on_error="ignore"` drops invalid records instead of raising.
+
 ## Exit codes
 
 | Code | Meaning                          |
@@ -151,11 +206,13 @@ pytest
 ## Roadmap
 
 - Phase 1 — NDJSON, Parquet, Excel, SQL inserts; heuristic auto-detection;
-  built-in schema library; verbose per-line diagnostics.
+  built-in schema library; verbose per-line diagnostics. *(Implemented.)*
 - Phase 2 — parallel processing for multi-GB files, batch globbing, automatic
-  schema inference, Pandas/Polars integration.
+  schema inference, Pandas/Polars integration. *(Implemented.)*
 - Phase 3 — shared schema registry, semantic business rules, checksums and
-  conversion summaries for audit evidence.
+  conversion summaries for audit evidence. *(In progress: rules, audit
+  sidecars, and local registry verification done; community registry and web
+  UI remain.)*
 - Phase 4 — Airbyte/Singer connectors, Databricks/Spark connector, SaaS.
 
 ## License

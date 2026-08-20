@@ -17,11 +17,13 @@ the file; the parser is generic. Every company has its own variant of "JD
 Edwards fixed-width" — the schema *is* the portable knowledge.
 
 > Note: the pipeline above shows the full target architecture. The current
-> implementation (Phases 0-1) runs:
-> `[fixed-width parser] → [converters] → [validator] → [writer]` with JSON,
-> CSV, NDJSON, SQL, Parquet, and Excel output, plus heuristic auto-detection
-> (`core/detector.py`) against the schema library. The transformer and mapper
-> stages remain future work.
+> implementation (Phases 0-3, minus transformer/mapper stages and the web UI)
+> runs:
+> `[parser] → [converters] → [validator] → [writer]` with JSON, CSV, NDJSON,
+> SQL, Parquet, and Excel output; heuristic auto-detection (`core/detector.py`);
+> schema inference (`core/generator.py`); parallel validation
+> (`core/parallel.py`); business rules (`core/rules.py`); and audit sidecars
+> (`core/audit.py`).
 
 ## Modules
 
@@ -34,6 +36,11 @@ Edwards fixed-width" — the schema *is* the portable knowledge.
 | `core/converters.py`| Dates (YYYYMMDD→ISO), decimals (scale), codepages (CP850/EBCDIC→UTF-8)         |
 | `core/validator.py` | Cumulative errors (does not stop at the first), line-numbered report           |
 | `core/writer.py`    | JSON/CSV/NDJSON/SQL + Parquet/Excel (optional deps)                           |
+| `core/generator.py` | Schema inference from example files (delimited) (Phase 2)                     |
+| `core/parallel.py`  | Chunked multiprocessing with deterministic ordering (Phase 2)                 |
+| `core/io.py`        | `read_erp()` → Pandas/Polars DataFrames (Phase 2)                             |
+| `core/rules.py`     | Business rules: sum / balance, O(1) memory (Phase 3)                          |
+| `core/audit.py`     | SHA-256 hashes + conversion summary sidecar (Phase 3)                         |
 | `formats/`          | Built-in schema library (JDE AR, SAP batch, etc.)                              |
 | `plugins/`          | Hooks for custom parsers (rare binary formats) — future phase                  |
 
@@ -94,15 +101,16 @@ of the audit trail for regulated users (banking, health).
   example. Impact: individual developers. *(Implemented.)*
 - **Phase 1 — Adoption (2–4 weeks).** NDJSON, Parquet, Excel, SQL inserts;
   heuristic format auto-detection; built-in schema library (JDE AR/AP, SAP
-  batch); verbose per-line diagnostics. Impact: full data teams.
-  *(In progress: writers + detector + JDE AR/SAP batch schemas done.)*
+  batch); verbose per-line diagnostics. Impact: full data teams. *(Implemented.)*
 - **Phase 2 — Scale (1–2 months).** Parallelism for GBs, batch globbing,
   automatic schema inference from example files, Pandas/Polars integration.
-  Impact: real enterprise ETLs.
+  Impact: real enterprise ETLs. *(Implemented.)*
 - **Phase 3 — Network effects (2–4 months).** Central schema registry (community
   shares formats), semantic business rules (debits=credits, totals, cross
   references), checksums + conversion summary (audit evidence), web UI for
-  schema generation. Impact: the niche becomes "critical".
+  schema generation. Impact: the niche becomes "critical". *(In progress:
+  rules, audit sidecars, and local registry verification done; centralized
+  community registry and web UI remain.)*
 - **Phase 4 — Ecosystem (6+ months).** Airbyte/Singer source connector,
   Databricks/Spark connector, cloud/SaaS for non-developers, schema marketplace.
   Impact: de facto standard for legacy flat files.

@@ -51,6 +51,11 @@ class Validator:
         self.schema = schema
 
     def validate_record(self, line: int, record: bytes) -> RecordResult:
+        if self.schema.record_length is not None:
+            return self._validate_fixed(line, record)
+        return self._validate_delimited(line, record)
+
+    def _validate_fixed(self, line: int, record: bytes) -> RecordResult:
         errors: list[str] = []
         fields: list[FieldValue] = []
         length_ok = len(record) == self.schema.record_length
@@ -71,4 +76,31 @@ class Validator:
                 errors.append(f"field '{f.name}': {exc}")
                 value = None
             fields.append(FieldValue(name=f.name, value=value, raw=raw_text))
+        return RecordResult(line=line, ok=not errors, errors=errors, fields=fields)
+
+    def _validate_delimited(self, line: int, record: bytes) -> RecordResult:
+        errors: list[str] = []
+        fields: list[FieldValue] = []
+        text = record.decode(self.schema.codepage, errors="replace")
+        parts = text.split(self.schema.delimiter)
+        for i, f in enumerate(self.schema.fields):
+            if i >= len(parts):
+                errors.append(
+                    f"field '{f.name}': missing column "
+                    f"({len(parts)} columns in line)"
+                )
+                fields.append(FieldValue(name=f.name, value=None, raw=""))
+                continue
+            raw_text = parts[i].strip()
+            try:
+                value = converters.convert_text(raw_text, f)
+            except converters.ConversionError as exc:
+                errors.append(f"field '{f.name}': {exc}")
+                value = None
+            fields.append(FieldValue(name=f.name, value=value, raw=raw_text))
+        if len(parts) > len(self.schema.fields):
+            errors.append(
+                f"{len(parts)} columns in line, "
+                f"schema expects {len(self.schema.fields)}"
+            )
         return RecordResult(line=line, ok=not errors, errors=errors, fields=fields)
