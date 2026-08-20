@@ -169,19 +169,28 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         out = None
         out_fh = nullcontext(sys.stdout)
     elif args.format in TEXT_FORMATS:
-        try:
-            # noqa: SIM115 - file kept open for streaming; closed by `with out_fh`
-            out_fh = open(args.output, "w", encoding="utf-8", newline="")  # noqa: SIM115
-        except OSError as exc:
-            stack.close()
-            print(f"output error: {exc}", file=sys.stderr)
-            return EXIT_ERROR
-        try:
-            out = writer.make_writer(args.format, sch, out_fh)
-        except ValueError as exc:
-            stack.close()
-            print(f"output error: {exc}", file=sys.stderr)
-            return EXIT_ERROR
+        if args.output == "-":
+            out_fh = nullcontext(sys.stdout)
+            try:
+                out = writer.make_writer(args.format, sch, sys.stdout)
+            except ValueError as exc:
+                stack.close()
+                print(f"output error: {exc}", file=sys.stderr)
+                return EXIT_ERROR
+        else:
+            try:
+                # noqa: SIM115 - file kept open for streaming; closed by `with out_fh`
+                out_fh = open(args.output, "w", encoding="utf-8", newline="")  # noqa: SIM115
+            except OSError as exc:
+                stack.close()
+                print(f"output error: {exc}", file=sys.stderr)
+                return EXIT_ERROR
+            try:
+                out = writer.make_writer(args.format, sch, out_fh)
+            except ValueError as exc:
+                stack.close()
+                print(f"output error: {exc}", file=sys.stderr)
+                return EXIT_ERROR
     else:
         out_fh = nullcontext(sys.stdout)
         try:
@@ -253,7 +262,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     )
     if sch.rules:
         summary_line += f" | rule violations: {len(violations)}"
-    print(summary_line)
+    print(summary_line, file=sys.stderr)
     for err in report["error_lines"]:
         print(f"  line {err['line']}: {'; '.join(err['errors'])}", file=sys.stderr)
     if violations or report["errors"]:

@@ -15,9 +15,7 @@ import sys
 from .schema import Schema, SchemaError, load_schema
 from .validator import Validator
 
-DEFAULT_FORMATS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "formats"
-)
+DEFAULT_FORMATS_DIR = os.path.join(os.path.dirname(__file__), "formats")
 SAMPLE_RECORDS = 5
 PERFECT_RECORD_BONUS = 10
 

@@ -57,5 +57,8 @@ erp-normalize = "cli:main"
 packages = ["core"]
 py-modules = ["cli"]
 
+[tool.setuptools.package-data]
+core = ["formats/*.yaml", "plugin_examples/*.py"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

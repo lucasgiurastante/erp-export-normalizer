@@ -12,7 +12,7 @@ from cli import main
 from core import detector as detector_mod
 from core.schema import load_schema
 
-FORMATS_DIR = os.path.join(os.path.dirname(__file__), "..", "formats")
+FORMATS_DIR = os.path.join(os.path.dirname(__file__), "..", "core", "formats")
 
 
 def pad(s: str, width: int, codepage: str = "ascii") -> bytes:

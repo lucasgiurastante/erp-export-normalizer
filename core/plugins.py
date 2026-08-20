@@ -1,7 +1,8 @@
 """Custom record parsers (plugins) for formats the built-in readers cannot
 handle: binary records, framed payloads, packed decimals, etc.
 
-A plugin is a Python module in `plugins/` exposing a `Reader` class with a
+A plugin is a Python module in `core/plugin_examples/` (bundled examples) or a
+user directory passed via `--plugins-dir`, exposing a `Reader` class with a
 `records()` method yielding `(line_no, record_bytes)` — the same contract as
 `parser.FixedWidthReader`. The schema selects it via the `parser` field::
 
@@ -26,9 +27,7 @@ from dataclasses import dataclass
 
 from .schema import Schema
 
-DEFAULT_PLUGINS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "plugins"
-)
+DEFAULT_PLUGINS_DIR = os.path.join(os.path.dirname(__file__), "plugin_examples")
 
 
 class PluginError(ValueError):

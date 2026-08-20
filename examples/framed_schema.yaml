@@ -1,0 +1,9 @@
+format: framed
+version: 1.0.0
+description: "Binary length-prefixed frame stream (see plugins/length_prefixed_frame)"
+parser: length_prefixed_frame
+codepage: cp1252
+fields:
+  - {name: id,   start: 0,  length: 4}
+  - {name: date, start: 4,  length: 8,  type: date,    format: YYYYMMDD}
+  - {name: amt,  start: 12, length: 8,  type: decimal, scale: 2, align: right}

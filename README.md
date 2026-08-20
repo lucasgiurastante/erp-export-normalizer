@@ -38,12 +38,32 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   checks, evaluated in O(1) memory.
 - **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
   hashes, schema version, counts, timestamp).
+
+## Try it now
+
+```bash
+pip install erp-export-normalizer
+git clone https://github.com/lucasgiurastante/erp-export-normalizer
+cd erp-export-normalizer/examples
+
+# JD Edwards export (fixed-width, CP850) -> JSON, no config needed
+erp-normalize --input data/jde_ar.txt --output - --format json
+
+# COBOL mainframe dump (EBCDIC) -> NDJSON; decoding happens automatically
+erp-normalize --input data/cobol.txt --output - --format ndjson
+
+# binary length-prefixed frames via the bundled plugin
+erp-normalize --schema framed_schema.yaml --input data/framed.bin --output - --format ndjson
+```
+
+Sample data and the full command set live in
+[`examples/`](examples/README.md).
 - **DataFrame integration** — `read_erp()` loads exports straight into
   Pandas, Polars, or Spark (explicit `decimal128(38, scale)` schema; requires
   a JVM only at call time).
 - **`--dry-run`** — validate without writing output.
 - **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
-- **Custom binary parsers (plugins)** — drop a Python `Reader` in `plugins/`
+- **Custom binary parsers (plugins)** — drop a Python `Reader` in `core/plugin_examples/` (or any dir via `--plugins-dir`)
   and reference it from the schema (`parser: <module>`); validation, error
   reports and determinism still apply.
 - **Deterministic** — identical input produces identical output, every run.
@@ -69,25 +89,25 @@ pip install -e ".[all]"        # everything
 
 ```bash
 # validate and report errors without writing output
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output /dev/null --dry-run
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output /dev/null --dry-run
 
 # convert to JSON
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --format json
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.json --format json
 
 # convert to CSV
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.csv --format csv
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.csv --format csv
 
 # auto-detect the schema from the built-in library (no --schema)
 erp-normalize --input export.txt --output export.json
 
 # more formats: NDJSON, SQL inserts, Parquet, Excel
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.ndjson --format ndjson
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.sql --format sql
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.parquet --format parquet
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.xlsx --format excel
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.ndjson --format ndjson
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.sql --format sql
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.parquet --format parquet
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.xlsx --format excel
 
 # per-line diagnostics
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --verbose --dry-run
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.json --verbose --dry-run
 ```
 
 ### Schema generation, batch, and audit
@@ -98,19 +118,19 @@ erp-normalize generate-schema example.csv --output example_schema.yaml
 erp-normalize --schema example_schema.yaml --input example.csv --output example.json
 
 # batch-convert a whole directory of exports
-erp-normalize --schema formats/jde_ar.yaml --input "exports/*.txt" --output-dir converted/ --format parquet
+erp-normalize --schema core/formats/jde_ar.yaml --input "exports/*.txt" --output-dir converted/ --format parquet
 
 # parallel validation (byte-identical output to serial)
-erp-normalize --schema formats/jde_ar.yaml --input big.txt --output big.json --workers 4
+erp-normalize --schema core/formats/jde_ar.yaml --input big.txt --output big.json --workers 4
 
 # audit evidence sidecar (<output>.sha256)
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --checksum
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output export.json --checksum
 
 # Singer tap stream (pipe into any Singer target)
-erp-normalize --schema formats/jde_ar.yaml --input export.txt --output - --format singer | target-postgres
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output - --format singer | target-postgres
 
 # validate the schema library
-erp-normalize registry formats/
+erp-normalize registry core/formats/
 
 # zero-dependency web UI (generate schemas without touching YAML)
 erp-normalize serve --port 8000
@@ -131,7 +151,7 @@ and per-line diagnostics to stderr:
 
 ## Schema format
 
-`formats/jde_ar.yaml` — a JD Edwards Accounts Receivable export:
+`core/formats/jde_ar.yaml` — a JD Edwards Accounts Receivable export:
 
 ```yaml
 format: jde_fixed_width
@@ -183,7 +203,7 @@ rules:
 ### Custom parsers (plugins)
 
 For formats the built-in readers cannot handle — binary records, framed
-payloads, packed decimals. A plugin is a Python module in `plugins/` exposing
+payloads, packed decimals. A plugin is a Python module in `core/plugin_examples/` exposing
 a `Reader` class with a `records()` method yielding `(line_no, record_bytes)`
 (the same contract as `parser.FixedWidthReader`). The schema selects it via
 `parser`:
@@ -191,7 +211,7 @@ a `Reader` class with a `records()` method yielding `(line_no, record_bytes)`
 ```yaml
 format: framed
 version: 1.0.0
-parser: length_prefixed_frame   # plugins/length_prefixed_frame.py
+parser: length_prefixed_frame   # core/plugin_examples/length_prefixed_frame.py
 codepage: cp1252
 fields:
   - {name: id,   start: 0,  length: 4}
@@ -209,7 +229,7 @@ plugins get the same cumulative error report and exit codes. Run with
 ```python
 from core.io import read_erp
 
-df = read_erp("export.txt", schema="formats/jde_ar.yaml")  # pandas
+df = read_erp("export.txt", schema="core/formats/jde_ar.yaml")  # pandas
 pl_df = read_erp("export.txt", backend="polars")  # auto-detect + polars
 spark_df = read_erp("export.txt", backend="spark")  # explicit decimal128 schema
 ```

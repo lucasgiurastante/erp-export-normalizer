@@ -214,7 +214,7 @@ class TestChecksum(unittest.TestCase):
 
 class TestRegistry(unittest.TestCase):
     def test_registry_verify_ok(self):
-        formats_dir = os.path.join(os.path.dirname(__file__), "..", "formats")
+        formats_dir = os.path.join(os.path.dirname(__file__), "..", "core", "formats")
         code = main(["registry", os.path.abspath(formats_dir)])
         self.assertEqual(code, 0)
 

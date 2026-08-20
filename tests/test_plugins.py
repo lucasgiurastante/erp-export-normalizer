@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import struct
 import tempfile
@@ -9,10 +12,10 @@ import unittest
 
 from cli import main
 from core import plugins as plugins_mod
+from core.schema import build_schema
 
 TESTS_DIR = os.path.dirname(__file__)
-PROJECT_ROOT = os.path.dirname(TESTS_DIR)
-PLUGINS_DIR = os.path.join(PROJECT_ROOT, "plugins")
+PLUGINS_DIR = os.path.join(os.path.dirname(TESTS_DIR), "core", "plugin_examples")
 
 FRAMED_SCHEMA = """\
 format: framed
@@ -65,8 +68,6 @@ class TestPlugins(unittest.TestCase):
                 ]
             )
             self.assertEqual(code, 0)
-            import json
-
             with open(out_path, encoding="utf-8") as fh:
                 rows = json.load(fh)
             self.assertEqual(rows[0]["date"], "2025-01-15")
@@ -141,10 +142,39 @@ class TestPlugins(unittest.TestCase):
             )
             self.assertEqual(code, 1)  # EXIT_ERROR
 
+    def test_output_dash_streams_to_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            schema_path = os.path.join(tmp, "schema.yaml")
+            with open(schema_path, "w", encoding="utf-8") as fh:
+                fh.write(FRAMED_SCHEMA)
+            in_path = os.path.join(tmp, "input.bin")
+            with open(in_path, "wb") as fh:
+                fh.write(framed_record(payload("0001", "20250115", "12345")))
+            sink = io.StringIO()
+            with contextlib.redirect_stdout(sink):
+                code = main(
+                    [
+                        "--schema",
+                        schema_path,
+                        "--input",
+                        in_path,
+                        "--output",
+                        "-",
+                        "--format",
+                        "ndjson",
+                        "--plugins-dir",
+                        PLUGINS_DIR,
+                    ]
+                )
+            self.assertEqual(code, 0)
+            self.assertEqual(
+                json.loads(sink.getvalue().strip()),
+                {"id": "0001", "date": "2025-01-15", "amt": 123.45},
+            )
+            self.assertFalse(os.path.exists(os.path.join(tmp, "-")))
+
     def test_schema_with_parser_needs_no_record_length(self):
         import yaml
-
-        from core.schema import build_schema
 
         data = yaml.safe_load(FRAMED_SCHEMA)
         built = build_schema(data)

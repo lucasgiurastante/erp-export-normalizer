@@ -78,7 +78,7 @@ def _free_port() -> int:
 class TestWebUi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        formats_dir = os.path.join(os.path.dirname(__file__), "..", "formats")
+        formats_dir = os.path.join(os.path.dirname(__file__), "..", "core", "formats")
         cls.httpd = ThreadingHTTPServer(
             ("127.0.0.1", 0), webui.make_handler(os.path.abspath(formats_dir))
         )
@@ -137,7 +137,7 @@ class TestWebUi(unittest.TestCase):
                 },
             )
             self.assertEqual(result["exit_code"], 0)
-            self.assertIn("records: 1", result["stdout"])
+            self.assertIn("records: 1", result["stderr"])
             self.assertEqual(result["preview"][0]["date"], "2025-01-15")
 
     def test_api_convert_missing_input(self):
