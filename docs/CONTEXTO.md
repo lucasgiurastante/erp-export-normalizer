@@ -53,10 +53,10 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 
 ## Estado actual (agosto 2026)
 
-- **7 commits**, HEAD `dadb815` ("chore: remove .DS_Store from index, ignore macOS junk").
+- **8 commits**, HEAD `ed1143c` ("feat: expand built-in schema library to 6 formats + CI badge").
 - **66 tests OK** (1 skip — spark sin JVM local), ruff limpio, mypy limpio.
+- Tag + release `v0.1.0`; CI verde en GitHub (incluye los últimos pushes).
 - Git sync con GitHub (lucasgiurastante/erp-export-normalizer), working tree limpio.
-- Remote = local, nada pendiente de push.
 
 ### Fases
 
@@ -71,8 +71,8 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 ### Gaps detectados (análisis 2026-08-20)
 
 1. ~~**.DS_Store commiteado**~~ ✅ resuelto — fuera del índice, `.gitignore` cubre.
-2. **Sin tags/releases** — pyproject dice `0.1.0`, pero 0 releases en GitHub.
-3. **About de GitHub vacío** — sin description, topics ni website → invisible en búsqueda.
+2. ~~**Sin tags/releases**~~ ✅ resuelto — tag + release `v0.1.0` creados con release notes.
+3. ~~**About de GitHub vacío**~~ ✅ resuelto — description + 8 topics (erp, jdedwards, sap, etl, flat-file, mainframe, fixed-width, python).
 4. ~~**Sin CI badge**~~ ✅ resuelto — badge del workflow en README (activo tras push post-fix).
 5. ~~**Biblioteca formats/ pobre**~~ ✅ resuelto — 6 schemas (jde_ar/ap/gl, sap_batch/fi_document, cobol_fixed) + tests de detector por fixture.
 6. **plugins/** — hooks para parsers custom (formato binario raro) listado en
