@@ -3,6 +3,7 @@
 Given a sample flat file, detect the delimiter, infer column names and
 types, and emit a `delimited` YAML schema ready for erp-normalize.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -27,9 +28,7 @@ def _is_date(text: str) -> bool:
 
 
 def _is_decimal(text: str) -> bool:
-    t = text
-    if t.endswith("-"):  # trailing mainframe-style sign
-        t = t[:-1]
+    t = text.removesuffix("-")  # trailing mainframe-style sign
     try:
         decimal.Decimal(t)
         return True

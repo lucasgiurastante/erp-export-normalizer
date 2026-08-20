@@ -3,7 +3,10 @@
 `read_erp()` runs the same validated pipeline as the CLI and returns an
 in-memory DataFrame for interactive analysis.
 """
+
 from __future__ import annotations
+
+from typing import Any
 
 from . import detector as detector_mod
 from .parser import FixedWidthReader
@@ -20,7 +23,7 @@ def read_erp(
     formats_dir: str = detector_mod.DEFAULT_FORMATS_DIR,
     backend: str = "pandas",
     on_error: str = "raise",
-):
+) -> Any:
     """Convert a flat file to a DataFrame.
 
     Arguments:
@@ -37,7 +40,9 @@ def read_erp(
     elif schema is None:
         found = detector_mod.Detector(formats_dir).detect(path)
         if found is None:
-            raise ErpValidationError("no schema matched the input; pass schema explicitly")
+            raise ErpValidationError(
+                "no schema matched the input; pass schema explicitly"
+            )
         schema = found.schema
 
     val = Validator(schema)
@@ -65,4 +70,26 @@ def read_erp(
         import polars as pl
 
         return pl.DataFrame(rows)
+    if backend == "spark":
+        return _spark_dataframe(schema, rows)
     raise ValueError(f"unsupported backend: {backend!r}")
+
+
+def _spark_dataframe(schema, rows: list[dict]):
+    """Build a Spark DataFrame with an explicit schema: exact
+    DecimalType(38, scale) for money, StringType for everything else
+    (dates stay ISO strings, matching every other output format)."""
+    from pyspark.sql import SparkSession
+    from pyspark.sql.types import DecimalType, StringType, StructField, StructType
+
+    fields = [
+        StructField(
+            f.name,
+            DecimalType(38, f.scale) if f.type == "decimal" else StringType(),
+            nullable=True,
+        )
+        for f in schema.fields
+    ]
+    tuple_rows = [tuple(row.get(f.name) for f in schema.fields) for row in rows]
+    spark = SparkSession.builder.appName("erp-export-normalizer").getOrCreate()
+    return spark.createDataFrame(tuple_rows, StructType(fields))

@@ -1,14 +1,14 @@
 """Phase 3 tests: business rules, audit checksums, schema registry."""
+
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import tempfile
 import unittest
 
 from cli import main
-from core import audit, rules
+from core import rules
 from tests.test_mvp import REC_OK, write_schema
 
 BALANCE_SCHEMA = {
@@ -18,8 +18,22 @@ BALANCE_SCHEMA = {
     "codepage": "utf-8",
     "rules": [{"type": "balance", "positive": "debit", "negative": "credit"}],
     "fields": [
-        {"name": "debit", "start": 0, "length": 12, "type": "decimal", "scale": 2, "align": "right"},
-        {"name": "credit", "start": 12, "length": 12, "type": "decimal", "scale": 2, "align": "right"},
+        {
+            "name": "debit",
+            "start": 0,
+            "length": 12,
+            "type": "decimal",
+            "scale": 2,
+            "align": "right",
+        },
+        {
+            "name": "credit",
+            "start": 12,
+            "length": 12,
+            "type": "decimal",
+            "scale": 2,
+            "align": "right",
+        },
     ],
 }
 
@@ -37,17 +51,22 @@ def _write_schema_dict(tmp: str, data: dict) -> str:
     return path
 
 
-def _convert(tmp: str, schema_path: str, records: list[bytes], extra: list[str] | None = None):
+def _convert(
+    tmp: str, schema_path: str, records: list[bytes], extra: list[str] | None = None
+):
     input_path = os.path.join(tmp, "in.txt")
     with open(input_path, "wb") as fh:
-        for r in records:
-            fh.write(r + b"\n")
+        fh.writelines(r + b"\n" for r in records)
     out_path = os.path.join(tmp, "out.json")
     args = [
-        "--schema", schema_path,
-        "--input", input_path,
-        "--output", out_path,
-        "--format", "json",
+        "--schema",
+        schema_path,
+        "--input",
+        input_path,
+        "--output",
+        out_path,
+        "--format",
+        "json",
     ] + (extra or [])
     return main(args), input_path, out_path
 
@@ -55,35 +74,71 @@ def _convert(tmp: str, schema_path: str, records: list[bytes], extra: list[str] 
 class TestRules(unittest.TestCase):
     def test_sum_rule_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
-            schema_path = _write_schema_dict(tmp, {
-                "format": "jde_fixed_width", "version": "1.0.0",
-                "record_length": 44, "codepage": "cp850",
-                "rules": [{"type": "sum", "field": "amount", "expected": 123.45}],
-                "fields": [
-                    {"name": "id", "start": 0, "length": 10},
-                    {"name": "type", "start": 10, "length": 15},
-                    {"name": "date", "start": 25, "length": 8, "type": "date", "format": "YYYYMMDD"},
-                    {"name": "amount", "start": 33, "length": 8, "type": "decimal", "scale": 2, "align": "right"},
-                    {"name": "currency", "start": 41, "length": 3},
-                ],
-            })
+            schema_path = _write_schema_dict(
+                tmp,
+                {
+                    "format": "jde_fixed_width",
+                    "version": "1.0.0",
+                    "record_length": 44,
+                    "codepage": "cp850",
+                    "rules": [{"type": "sum", "field": "amount", "expected": 123.45}],
+                    "fields": [
+                        {"name": "id", "start": 0, "length": 10},
+                        {"name": "type", "start": 10, "length": 15},
+                        {
+                            "name": "date",
+                            "start": 25,
+                            "length": 8,
+                            "type": "date",
+                            "format": "YYYYMMDD",
+                        },
+                        {
+                            "name": "amount",
+                            "start": 33,
+                            "length": 8,
+                            "type": "decimal",
+                            "scale": 2,
+                            "align": "right",
+                        },
+                        {"name": "currency", "start": 41, "length": 3},
+                    ],
+                },
+            )
             code, _, _ = _convert(tmp, schema_path, [REC_OK])
             self.assertEqual(code, 0)
 
     def test_sum_rule_violation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            schema_path = _write_schema_dict(tmp, {
-                "format": "jde_fixed_width", "version": "1.0.0",
-                "record_length": 44, "codepage": "cp850",
-                "rules": [{"type": "sum", "field": "amount", "expected": 999}],
-                "fields": [
-                    {"name": "id", "start": 0, "length": 10},
-                    {"name": "type", "start": 10, "length": 15},
-                    {"name": "date", "start": 25, "length": 8, "type": "date", "format": "YYYYMMDD"},
-                    {"name": "amount", "start": 33, "length": 8, "type": "decimal", "scale": 2, "align": "right"},
-                    {"name": "currency", "start": 41, "length": 3},
-                ],
-            })
+            schema_path = _write_schema_dict(
+                tmp,
+                {
+                    "format": "jde_fixed_width",
+                    "version": "1.0.0",
+                    "record_length": 44,
+                    "codepage": "cp850",
+                    "rules": [{"type": "sum", "field": "amount", "expected": 999}],
+                    "fields": [
+                        {"name": "id", "start": 0, "length": 10},
+                        {"name": "type", "start": 10, "length": 15},
+                        {
+                            "name": "date",
+                            "start": 25,
+                            "length": 8,
+                            "type": "date",
+                            "format": "YYYYMMDD",
+                        },
+                        {
+                            "name": "amount",
+                            "start": 33,
+                            "length": 8,
+                            "type": "decimal",
+                            "scale": 2,
+                            "align": "right",
+                        },
+                        {"name": "currency", "start": 41, "length": 3},
+                    ],
+                },
+            )
             code, _, _ = _convert(tmp, schema_path, [REC_OK])
             self.assertEqual(code, 3)
 
@@ -102,19 +157,26 @@ class TestRules(unittest.TestCase):
     def test_balance_multiple_records(self):
         with tempfile.TemporaryDirectory() as tmp:
             schema_path = _write_schema_dict(tmp, BALANCE_SCHEMA)
-            code, _, _ = _convert(tmp, schema_path, [brec("60.00", "40.00"), brec("40.00", "60.00")])
+            code, _, _ = _convert(
+                tmp, schema_path, [brec("60.00", "40.00"), brec("40.00", "60.00")]
+            )
             self.assertEqual(code, 0)
 
     def test_invalid_rule_type_schema_error(self):
         with tempfile.TemporaryDirectory() as tmp:
-            bad = _write_schema_dict(tmp, {
-                "format": "jde_fixed_width", "version": "1.0.0",
-                "record_length": 44, "codepage": "cp850",
-                "rules": [{"type": "magic"}],
-                "fields": [
-                    {"name": "id", "start": 0, "length": 10},
-                ],
-            })
+            bad = _write_schema_dict(
+                tmp,
+                {
+                    "format": "jde_fixed_width",
+                    "version": "1.0.0",
+                    "record_length": 44,
+                    "codepage": "cp850",
+                    "rules": [{"type": "magic"}],
+                    "fields": [
+                        {"name": "id", "start": 0, "length": 10},
+                    ],
+                },
+            )
             code, _, _ = _convert(tmp, bad, [REC_OK])
             self.assertEqual(code, 2)
 
@@ -133,13 +195,16 @@ class TestChecksum(unittest.TestCase):
     def test_checksum_sidecar(self):
         with tempfile.TemporaryDirectory() as tmp:
             schema_path = write_schema(tmp)
-            code, input_path, out_path = _convert(tmp, schema_path, [REC_OK], extra=["--checksum"])
+            code, input_path, out_path = _convert(
+                tmp, schema_path, [REC_OK], extra=["--checksum"]
+            )
             self.assertEqual(code, 0)
             sidecar = out_path + ".sha256"
             self.assertTrue(os.path.exists(sidecar))
             with open(sidecar, encoding="utf-8") as fh:
                 content = fh.read()
-            expected = hashlib.sha256(open(input_path, "rb").read()).hexdigest()
+            with open(input_path, "rb") as fh:
+                expected = hashlib.sha256(fh.read()).hexdigest()
             self.assertIn(f"input_sha256={expected}", content)
             self.assertIn("schema_version=1.0.0", content)
             self.assertIn("records_ok=1", content)

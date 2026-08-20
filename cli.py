@@ -11,13 +11,14 @@ Streaming, line by line; cumulative validation with a line-numbered report.
 
 Exit codes: 0 success / 1 runtime error / 2 invalid schema / 3 validation errors.
 """
+
 from __future__ import annotations
 
 import argparse
 import glob
 import os
 import sys
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 
 import yaml
 
@@ -28,9 +29,11 @@ from core import (
     parallel,
     parser,
     rules,
-    schema as schema_mod,
     validator,
     writer,
+)
+from core import (
+    schema as schema_mod,
 )
 
 EXIT_OK = 0
@@ -66,9 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--input", help="input flat file or glob pattern (e.g. 'exports/*.txt')"
     )
-    ap.add_argument(
-        "--output", help="output path ('-' = stdout, text formats only)"
-    )
+    ap.add_argument("--output", help="output path ('-' = stdout, text formats only)")
     ap.add_argument("--output-dir", help="directory for batch (glob) conversions")
     ap.add_argument(
         "--format",
@@ -112,9 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     reg = sub.add_parser("registry", help="validate a schema library directory")
     reg.add_argument("dir", help="directory of *.yaml schemas")
 
-    srv = sub.add_parser(
-        "serve", help="start the zero-dependency web UI (air-gapped)"
-    )
+    srv = sub.add_parser("serve", help="start the zero-dependency web UI (air-gapped)")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8000)
     return ap
@@ -146,22 +145,28 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     sch, code = _resolve_schema(args)
     if code is not None:
         return code
+    assert sch is not None  # exit code above guarantees resolution
 
     rule_engine = rules.RuleEngine(sch.rules) if sch.rules else None
     stats = validator.Stats()
 
+    stack = ExitStack()
+    out_fh: object = nullcontext(sys.stdout)
     if args.dry_run:
         out = None
         out_fh = nullcontext(sys.stdout)
     elif args.format in TEXT_FORMATS:
         try:
-            out_fh = open(args.output, "w", encoding="utf-8", newline="")
+            # noqa: SIM115 - file kept open for streaming; closed by `with out_fh`
+            out_fh = open(args.output, "w", encoding="utf-8", newline="")  # noqa: SIM115
         except OSError as exc:
+            stack.close()
             print(f"output error: {exc}", file=sys.stderr)
             return EXIT_ERROR
         try:
             out = writer.make_writer(args.format, sch, out_fh)
         except ValueError as exc:
+            stack.close()
             print(f"output error: {exc}", file=sys.stderr)
             return EXIT_ERROR
     else:
@@ -169,6 +174,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         try:
             out = writer.make_writer(args.format, sch, args.output)
         except (OSError, ValueError) as exc:
+            stack.close()
             print(f"output error: {exc}", file=sys.stderr)
             return EXIT_ERROR
 
@@ -192,9 +198,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
                 stats.add(result)
                 if args.verbose:
                     status = "OK" if result.ok else "ERR"
-                    details = (
-                        f" [{'; '.join(result.errors)}]" if result.errors else ""
-                    )
+                    details = f" [{'; '.join(result.errors)}]" if result.errors else ""
                     print(f"  line {result.line}: {status}{details}", file=sys.stderr)
                 if rule_engine is not None and result.ok:
                     rule_engine.observe({fv.name: fv.value for fv in result.fields})
@@ -224,8 +228,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
 
     report = stats.report()
     summary_line = (
-        f"records: {report['total']} | ok: {report['ok']} | "
-        f"errors: {report['errors']}"
+        f"records: {report['total']} | ok: {report['ok']} | errors: {report['errors']}"
     )
     if sch.rules:
         summary_line += f" | rule violations: {len(violations)}"
@@ -257,7 +260,9 @@ def convert_main(ap: argparse.ArgumentParser, args) -> int:
             sub.input = match
             sub.output = os.path.join(
                 args.output_dir,
-                os.path.splitext(os.path.basename(match))[0] + "." + _ext_for(args.format),
+                os.path.splitext(os.path.basename(match))[0]
+                + "."
+                + _ext_for(args.format),
             )
             print(f"== {match} -> {sub.output}", file=sys.stderr)
             codes.append(_convert_file(ap, sub))
@@ -291,7 +296,9 @@ def generate_main(args) -> int:
     try:
         schema_mod.build_schema(data)  # validate before writing
     except schema_mod.SchemaError as exc:
-        print(f"generate-schema error: generated schema invalid: {exc}", file=sys.stderr)
+        print(
+            f"generate-schema error: generated schema invalid: {exc}", file=sys.stderr
+        )
         return EXIT_ERROR
     with open(args.output, "w", encoding="utf-8") as fh:
         yaml.safe_dump(data, fh, sort_keys=False)

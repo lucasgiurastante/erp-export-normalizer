@@ -1,4 +1,5 @@
 """MVP Phase 0 tests: fixed-width -> JSON/CSV with a YAML schema."""
+
 from __future__ import annotations
 
 import decimal
@@ -7,9 +8,9 @@ import os
 import tempfile
 import unittest
 
-from core import converters, parser, schema as schema_mod, validator
-
 from cli import main
+from core import converters, parser
+from core import schema as schema_mod
 
 SAMPLE_SCHEMA = {
     "format": "jde_fixed_width",
@@ -19,8 +20,21 @@ SAMPLE_SCHEMA = {
     "fields": [
         {"name": "id", "start": 0, "length": 10},
         {"name": "type", "start": 10, "length": 15},
-        {"name": "date", "start": 25, "length": 8, "type": "date", "format": "YYYYMMDD"},
-        {"name": "amount", "start": 33, "length": 8, "type": "decimal", "scale": 2, "align": "right"},
+        {
+            "name": "date",
+            "start": 25,
+            "length": 8,
+            "type": "date",
+            "format": "YYYYMMDD",
+        },
+        {
+            "name": "amount",
+            "start": 33,
+            "length": 8,
+            "type": "decimal",
+            "scale": 2,
+            "align": "right",
+        },
         {"name": "currency", "start": 41, "length": 3},
     ],
 }
@@ -57,18 +71,24 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(sch.version, "1.0.0")
 
     def test_overflow_rejected(self):
-        data = dict(SAMPLE_SCHEMA, fields=[
-            {"name": "id", "start": 40, "length": 10},
-        ])
+        data = dict(
+            SAMPLE_SCHEMA,
+            fields=[
+                {"name": "id", "start": 40, "length": 10},
+            ],
+        )
         with self.assertRaises(schema_mod.SchemaError) as ctx:
             schema_mod.build_schema(data)
         self.assertIn("overflows", str(ctx.exception))
 
     def test_overlap_rejected(self):
-        data = dict(SAMPLE_SCHEMA, fields=[
-            {"name": "a", "start": 0, "length": 10},
-            {"name": "b", "start": 5, "length": 10},
-        ])
+        data = dict(
+            SAMPLE_SCHEMA,
+            fields=[
+                {"name": "a", "start": 0, "length": 10},
+                {"name": "b", "start": 5, "length": 10},
+            ],
+        )
         with self.assertRaises(schema_mod.SchemaError) as ctx:
             schema_mod.build_schema(data)
         self.assertIn("overlap", str(ctx.exception))
@@ -120,15 +140,21 @@ class TestPipeline(unittest.TestCase):
         schema_path = write_schema(tmp)
         input_path = os.path.join(tmp, "input.txt")
         with open(input_path, "wb") as fh:
-            for r in records:
-                fh.write(r + b"\n")
+            fh.writelines(r + b"\n" for r in records)
         output_path = os.path.join(tmp, f"out.{fmt}")
-        code = main([
-            "--schema", schema_path,
-            "--input", input_path,
-            "--output", output_path,
-            "--format", fmt,
-        ] + (["--dry-run"] if dry_run else []))
+        code = main(
+            [
+                "--schema",
+                schema_path,
+                "--input",
+                input_path,
+                "--output",
+                output_path,
+                "--format",
+                fmt,
+            ]
+            + (["--dry-run"] if dry_run else [])
+        )
         return code, output_path
 
     def test_json_ok(self):
@@ -162,7 +188,9 @@ class TestPipeline(unittest.TestCase):
 
     def test_dry_run_no_output_file(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code, out_path = self._run(tmp, [REC_OK, REC_BAD_DATE], "json", dry_run=True)
+            code, out_path = self._run(
+                tmp, [REC_OK, REC_BAD_DATE], "json", dry_run=True
+            )
             self.assertEqual(code, 3)
             self.assertFalse(os.path.exists(out_path))
 

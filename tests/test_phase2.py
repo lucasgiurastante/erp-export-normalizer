@@ -1,5 +1,6 @@
 """Phase 2 tests: delimited parsing, schema generation, batch globbing,
 parallel validation, DataFrame integration."""
+
 from __future__ import annotations
 
 import decimal
@@ -9,16 +10,16 @@ import tempfile
 import unittest
 
 from cli import main
-from core import generator, schema as schema_mod
+from core import schema as schema_mod
 from tests.test_mvp import rec, write_schema
 
 try:
-    import pandas  # noqa: F401
+    import pandas
 except ImportError:
     pandas = None
 
 try:
-    import polars  # noqa: F401
+    import polars
 except ImportError:
     polars = None
 
@@ -44,12 +45,18 @@ class TestDelimited(unittest.TestCase):
         code = main(["generate-schema", in_path, "--output", schema_path])
         self.assertEqual(code, 0)
         out_path = os.path.join(tmp, "out.json")
-        code = main([
-            "--schema", schema_path,
-            "--input", in_path,
-            "--output", out_path,
-            "--format", "json",
-        ])
+        code = main(
+            [
+                "--schema",
+                schema_path,
+                "--input",
+                in_path,
+                "--output",
+                out_path,
+                "--format",
+                "json",
+            ]
+        )
         return code, out_path
 
     def test_generate_infers_types_and_header(self):
@@ -85,20 +92,32 @@ class TestDelimited(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             in_path = _write(tmp, "data.csv", "\n".join(CSV_ROWS) + "\n")
             schema_path = os.path.join(tmp, "gen.yaml")
-            code = main([
-                "generate-schema", in_path, "--output", schema_path, "--no-header",
-            ])
+            code = main(
+                [
+                    "generate-schema",
+                    in_path,
+                    "--output",
+                    schema_path,
+                    "--no-header",
+                ]
+            )
             self.assertEqual(code, 0)
             sch = schema_mod.load_schema(schema_path)
             self.assertFalse(sch.has_header)
             self.assertEqual(sch.fields[0].name, "column_0")
             out_path = os.path.join(tmp, "out.json")
-            code = main([
-                "--schema", schema_path,
-                "--input", in_path,
-                "--output", out_path,
-                "--format", "json",
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    in_path,
+                    "--output",
+                    out_path,
+                    "--format",
+                    "json",
+                ]
+            )
             self.assertEqual(code, 0)
 
     def test_generate_rejects_no_delimiter(self):
@@ -115,12 +134,18 @@ class TestDelimited(unittest.TestCase):
             main(["generate-schema", in_path, "--output", schema_path])
             bad = _write(tmp, "bad.csv", CSV_HEADER + "20250115,1234.50,CUST A\n")
             out_path = os.path.join(tmp, "out.json")
-            code = main([
-                "--schema", schema_path,
-                "--input", bad,
-                "--output", out_path,
-                "--format", "json",
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    bad,
+                    "--output",
+                    out_path,
+                    "--format",
+                    "json",
+                ]
+            )
             self.assertEqual(code, 3)
 
 
@@ -137,13 +162,20 @@ class TestBatch(unittest.TestCase):
                 fh.write(rec("3", "C", "20250117", "300", "USD") + b"\n")
             out_dir = os.path.join(tmp, "out")
             os.makedirs(out_dir)
-            code = main([
-                "--schema", schema_path,
-                "--input", os.path.join(tmp, "in", "*.txt"),
-                "--output", os.path.join(tmp, "unused.json"),
-                "--output-dir", out_dir,
-                "--format", "json",
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    os.path.join(tmp, "in", "*.txt"),
+                    "--output",
+                    os.path.join(tmp, "unused.json"),
+                    "--output-dir",
+                    out_dir,
+                    "--format",
+                    "json",
+                ]
+            )
             self.assertEqual(code, 0)
             for name, expected in (("a.json", 2), ("b.json", 1)):
                 with open(os.path.join(out_dir, name), encoding="utf-8") as fh:
@@ -156,20 +188,30 @@ class TestBatch(unittest.TestCase):
             os.makedirs(os.path.join(tmp, "in"), exist_ok=True)
             _write(tmp, "in/a.txt", "")
             _write(tmp, "in/b.txt", "")
-            code = main([
-                "--schema", schema_path,
-                "--input", os.path.join(tmp, "in", "*.txt"),
-                "--output", os.path.join(tmp, "x.json"),
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    os.path.join(tmp, "in", "*.txt"),
+                    "--output",
+                    os.path.join(tmp, "x.json"),
+                ]
+            )
             self.assertEqual(code, 1)
 
     def test_glob_no_match(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code = main([
-                "--schema", write_schema(tmp),
-                "--input", os.path.join(tmp, "nope", "*.txt"),
-                "--output", os.path.join(tmp, "x.json"),
-            ])
+            code = main(
+                [
+                    "--schema",
+                    write_schema(tmp),
+                    "--input",
+                    os.path.join(tmp, "nope", "*.txt"),
+                    "--output",
+                    os.path.join(tmp, "x.json"),
+                ]
+            )
             self.assertEqual(code, 1)
 
 
@@ -179,24 +221,39 @@ class TestParallel(unittest.TestCase):
             schema_path = write_schema(tmp)
             input_path = os.path.join(tmp, "in.txt")
             with open(input_path, "wb") as fh:
-                for i in range(200):
-                    fh.write(rec(f"{i:08d}", f"C{i}", "20250115", str(i), "USD") + b"\n")
+                fh.writelines(
+                    rec(f"{i:08d}", f"C{i}", "20250115", str(i), "USD") + b"\n"
+                    for i in range(200)
+                )
             serial_out = os.path.join(tmp, "serial.json")
-            code = main([
-                "--schema", schema_path,
-                "--input", input_path,
-                "--output", serial_out,
-                "--format", "json",
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    input_path,
+                    "--output",
+                    serial_out,
+                    "--format",
+                    "json",
+                ]
+            )
             self.assertEqual(code, 0)
             par_out = os.path.join(tmp, "parallel.json")
-            code = main([
-                "--schema", schema_path,
-                "--input", input_path,
-                "--output", par_out,
-                "--format", "json",
-                "--workers", "2",
-            ])
+            code = main(
+                [
+                    "--schema",
+                    schema_path,
+                    "--input",
+                    input_path,
+                    "--output",
+                    par_out,
+                    "--format",
+                    "json",
+                    "--workers",
+                    "2",
+                ]
+            )
             self.assertEqual(code, 0)
             with open(serial_out, encoding="utf-8") as fh:
                 serial = fh.read()
@@ -216,7 +273,9 @@ class TestIo(unittest.TestCase):
                 fh.write(rec("1", "A", "20250115", "12345", "USD") + b"\n")
                 fh.write(rec("2", "B", "20250116", "67890", "EUR") + b"\n")
             df = read_erp(in_path, schema=write_schema(tmp))
-            self.assertEqual(list(df.columns), ["id", "type", "date", "amount", "currency"])
+            self.assertEqual(
+                list(df.columns), ["id", "type", "date", "amount", "currency"]
+            )
             self.assertEqual(df.iloc[0]["date"], "2025-01-15")
             self.assertEqual(df.iloc[1]["amount"], decimal.Decimal("678.90"))
 
@@ -242,6 +301,30 @@ class TestIo(unittest.TestCase):
             df = read_erp(in_path, schema=write_schema(tmp), backend="polars")
             self.assertEqual(df.height, 1)
             self.assertEqual(df["date"][0], "2025-01-15")
+
+    def test_read_erp_spark(self):
+        """Spark backend: needs a JVM; skipped when unavailable (CI has none)."""
+        try:
+            from core.io import read_erp
+        except ImportError:
+            self.skipTest("pyspark not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "in.txt")
+            with open(in_path, "wb") as fh:
+                fh.write(rec("1", "A", "20250115", "12345", "USD") + b"\n")
+                fh.write(rec("2", "B", "20250116", "67890", "EUR") + b"\n")
+            try:
+                df = read_erp(in_path, schema=write_schema(tmp), backend="spark")
+            except Exception as exc:  # noqa: BLE001 - JVM/Spark unavailable
+                self.skipTest(f"Spark runtime unavailable: {exc}")
+            rows = df.collect()
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["date"], "2025-01-15")
+            self.assertEqual(rows[1]["amount"], decimal.Decimal("678.90"))
+            self.assertEqual(
+                [f.name for f in df.schema.fields],
+                ["id", "type", "date", "amount", "currency"],
+            )
 
 
 if __name__ == "__main__":

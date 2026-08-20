@@ -4,16 +4,23 @@ Text writers stream into a file-like object. Binary writers (Parquet,
 Excel) take a path and manage their own file. Writers buffer only what
 the target format requires (Parquet batches, the Excel workbook).
 """
+
 from __future__ import annotations
 
 import csv
 import decimal
 import json
 import re
-from typing import TextIO
+from typing import Protocol, TextIO, cast
 
 from .schema import Schema
 from .validator import RecordResult
+
+
+class Writer(Protocol):
+    def write(self, result: RecordResult) -> None: ...
+    def finish(self) -> None: ...
+
 
 PARQUET_BATCH_SIZE = 1000
 SQL_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -110,7 +117,7 @@ class ParquetWriter:
             for f in schema.fields
         ]
         arrow_schema = pa.schema(
-            [pa.field(f.name, t) for f, t in zip(schema.fields, types)]
+            [pa.field(f.name, t) for f, t in zip(schema.fields, types, strict=True)]
         )
         self._schema = arrow_schema
         self._writer = pq.ParquetWriter(path, arrow_schema)
@@ -175,8 +182,7 @@ class SingerWriter:
     def write(self, result: RecordResult) -> None:
         row = {fv.name: _to_jsonable(fv.value) for fv in result.fields}
         self._out.write(
-            json.dumps({"type": "RECORD", "stream": self._stream, "record": row})
-            + "\n"
+            json.dumps({"type": "RECORD", "stream": self._stream, "record": row}) + "\n"
         )
 
     def finish(self) -> None:
@@ -189,19 +195,19 @@ def _singer_type(field) -> dict:
     return {"type": "string"}
 
 
-def make_writer(fmt: str, schema: Schema, out):
+def make_writer(fmt: str, schema: Schema, out: TextIO | str) -> Writer:
     if fmt == "json":
-        return JsonWriter(schema, out)
+        return JsonWriter(schema, cast(TextIO, out))
     if fmt == "csv":
-        return CsvWriter(schema, out)
+        return CsvWriter(schema, cast(TextIO, out))
     if fmt == "ndjson":
-        return NdjsonWriter(schema, out)
+        return NdjsonWriter(schema, cast(TextIO, out))
     if fmt == "sql":
-        return SqlWriter(schema, out)
+        return SqlWriter(schema, cast(TextIO, out))
     if fmt == "parquet":
-        return ParquetWriter(schema, out)
+        return ParquetWriter(schema, cast(str, out))
     if fmt == "excel":
-        return ExcelWriter(schema, out)
+        return ExcelWriter(schema, cast(str, out))
     if fmt == "singer":
-        return SingerWriter(schema, out)
+        return SingerWriter(schema, cast(TextIO, out))
     raise ValueError(f"unsupported output format: {fmt!r}")

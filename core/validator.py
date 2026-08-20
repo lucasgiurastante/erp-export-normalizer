@@ -1,4 +1,5 @@
 """Cumulative error collection (does not stop at the first) + line-numbered report."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -64,8 +65,11 @@ class Validator:
                 f"length {len(record)} != record_length {self.schema.record_length}"
             )
         for f in self.schema.fields:
-            raw = record[f.start:f.start + f.length]
-            if len(raw) < f.length:
+            start = f.start
+            length = f.length
+            assert start is not None and length is not None  # fixed-width invariant
+            raw = record[start : start + length]
+            if len(raw) < length:
                 errors.append(f"field '{f.name}': out of range (short line)")
                 fields.append(FieldValue(name=f.name, value=None, raw=""))
                 continue
@@ -86,8 +90,7 @@ class Validator:
         for i, f in enumerate(self.schema.fields):
             if i >= len(parts):
                 errors.append(
-                    f"field '{f.name}': missing column "
-                    f"({len(parts)} columns in line)"
+                    f"field '{f.name}': missing column ({len(parts)} columns in line)"
                 )
                 fields.append(FieldValue(name=f.name, value=None, raw=""))
                 continue

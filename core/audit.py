@@ -3,6 +3,7 @@
 For regulated environments (banking, health) the sidecar answers: what was
 converted, when, and with which schema version.
 """
+
 from __future__ import annotations
 
 import datetime

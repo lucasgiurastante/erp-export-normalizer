@@ -5,6 +5,7 @@ first records of the input (record length match + successfully converted
 fields). The highest-scoring schema wins; a zero score means no match.
 Deterministic: candidate order is sorted by path, ties go to the first.
 """
+
 from __future__ import annotations
 
 import glob

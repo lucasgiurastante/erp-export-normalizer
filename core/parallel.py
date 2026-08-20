@@ -4,6 +4,7 @@ Records are validated in fixed-size chunks by a process pool; results are
 yielded back in input order, so `--workers N` produces byte-identical
 output to `--workers 1`.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator

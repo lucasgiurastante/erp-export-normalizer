@@ -16,7 +16,7 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   first one; report includes the line number of each failure.
 - **Codepage-aware** — fields are sliced by byte offset and decoded per field
   (UTF-8, CP850, CP1252, Latin-1, EBCDIC-CP037).
-- **Six output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
+- **Seven output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
   `decimal128` for financial values), and Excel (write-only, bounded memory).
   Plus **Singer** — tap output (SCHEMA/RECORD/STATE), deterministic, ready
   for Singer targets and Airbyte's CDK.
@@ -35,7 +35,8 @@ Same input + same schema = same output. Determinism is the audit guarantee.
 - **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
   hashes, schema version, counts, timestamp).
 - **DataFrame integration** — `read_erp()` loads exports straight into
-  Pandas or Polars.
+  Pandas, Polars, or Spark (explicit `decimal128(38, scale)` schema; requires
+  a JVM only at call time).
 - **`--dry-run`** — validate without writing output.
 - **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
 - **Deterministic** — identical input produces identical output, every run.
@@ -52,6 +53,8 @@ pip install -e .          # core: JSON/CSV/NDJSON/SQL
 pip install -e ".[parquet]"    # + Parquet (pyarrow)
 pip install -e ".[excel]"      # + Excel (openpyxl)
 pip install -e ".[dataframe]"  # + read_erp() (pandas, polars)
+pip install -e ".[spark]"      # + read_erp(backend="spark") (pyspark)
+pip install -e ".[lint]"       # + ruff, mypy (development)
 pip install -e ".[all]"        # everything
 ```
 
@@ -175,11 +178,13 @@ rules:
 ```python
 from core.io import read_erp
 
-df = read_erp("export.txt", schema="formats/jde_ar.yaml")   # pandas
-pl_df = read_erp("export.txt", backend="polars")            # auto-detect + polars
+df = read_erp("export.txt", schema="formats/jde_ar.yaml")  # pandas
+pl_df = read_erp("export.txt", backend="polars")  # auto-detect + polars
+spark_df = read_erp("export.txt", backend="spark")  # explicit decimal128 schema
 ```
 
-`on_error="ignore"` drops invalid records instead of raising.
+`on_error="ignore"` drops invalid records instead of raising. The Spark
+backend imports lazily — a JVM is needed only when it is called.
 
 ## Exit codes
 
@@ -203,6 +208,9 @@ input.txt ──► [fixed-width parser] ──► [converters] ──► [valid
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design document: module
 responsibilities, design rules, user analysis, and the phased roadmap
 (NDJSON/Parquet/SQL, auto-detection, schema registry, semantic validation).
+See [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) for the deep dive:
+parsing internals, conversion semantics, determinism guarantees, and the
+reasoning behind each design decision.
 
 ## Development
 
@@ -211,6 +219,11 @@ responsibilities, design rules, user analysis, and the phased roadmap
 python -m unittest discover -s tests -v
 # or
 pytest
+
+# lint, format, and typecheck (mirrors CI)
+ruff check .
+ruff format --check .
+mypy cli.py core
 ```
 
 ## Roadmap
@@ -224,8 +237,8 @@ pytest
   sidecars, local registry verification, and the schema-generation web UI.
   A centralized community registry remains future.)*
 - Phase 4 — Airbyte/Singer connector, Databricks/Spark connector, SaaS.
-  *(In progress: Singer tap output done; Spark/Databricks connector and
-  hosted SaaS remain.)*
+  *(In progress: Singer tap output and the Spark `read_erp` backend done;
+  hosted SaaS remains.)*
 
 ## License
 

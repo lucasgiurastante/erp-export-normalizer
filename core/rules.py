@@ -9,6 +9,7 @@ Supported rule types:
 - balance: {type: balance, positive: <name>, negative: <name>}
       sum of `positive` must equal sum of `negative` (debits = credits).
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -29,7 +30,7 @@ class RuleEngine:
         self._totals: list[dict[str, decimal.Decimal]] = [{} for _ in self._rules]
 
     def observe(self, row: dict[str, object]) -> None:
-        for spec, acc in zip(self._rules, self._totals):
+        for spec, acc in zip(self._rules, self._totals, strict=True):
             rtype = spec["type"]
             if rtype == "sum":
                 self._accumulate(acc, spec["field"], row)
@@ -45,28 +46,32 @@ class RuleEngine:
 
     def finalize(self) -> list[RuleViolation]:
         violations: list[RuleViolation] = []
-        for spec, acc in zip(self._rules, self._totals):
+        for spec, acc in zip(self._rules, self._totals, strict=True):
             rtype = spec["type"]
             if rtype == "sum":
                 field = spec["field"]
                 total = acc.get(field, decimal.Decimal(0))
                 expected = decimal.Decimal(str(spec["expected"]))
                 if total != expected:
-                    violations.append(RuleViolation(
-                        spec,
-                        f"rule 'sum:{field}': total {total} != expected {expected}",
-                    ))
+                    violations.append(
+                        RuleViolation(
+                            spec,
+                            f"rule 'sum:{field}': total {total} != expected {expected}",
+                        )
+                    )
             elif rtype == "balance":
                 positive = spec["positive"]
                 negative = spec["negative"]
                 sp = acc.get(positive, decimal.Decimal(0))
                 sn = acc.get(negative, decimal.Decimal(0))
                 if sp != sn:
-                    violations.append(RuleViolation(
-                        spec,
-                        f"rule 'balance:{positive}/{negative}': "
-                        f"{positive}={sp} != {negative}={sn} (diff {sp - sn})",
-                    ))
+                    violations.append(
+                        RuleViolation(
+                            spec,
+                            f"rule 'balance:{positive}/{negative}': "
+                            f"{positive}={sp} != {negative}={sn} (diff {sp - sn})",
+                        )
+                    )
         return violations
 
 

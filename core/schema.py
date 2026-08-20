@@ -9,6 +9,7 @@ Formats:
 - delimited (`format: delimited`): fields are split on `delimiter`;
   `record_length` is not used.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -56,7 +57,7 @@ class Schema:
 
 
 def load_schema(path: str) -> Schema:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
     if not isinstance(data, dict):
         raise SchemaError(f"{path}: schema root must be a mapping")
@@ -161,7 +162,8 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         if is_delimited:
             if "start" in raw or "length" in raw:
                 errors.append(
-                    f"fields[{i}] '{name}': start/length not allowed for delimited format"
+                    f"fields[{i}] '{name}': start/length not allowed "
+                    "for delimited format"
                 )
             start = length = None
         else:
@@ -201,7 +203,7 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         for a_i, a in enumerate(fields):
             if a.start is None or a.length is None or a.start < 0 or a.length <= 0:
                 continue
-            for b in fields[a_i + 1:]:
+            for b in fields[a_i + 1 :]:
                 if b.start is None or b.length is None or b.start < 0 or b.length <= 0:
                     continue
                 if a.start < b.start + b.length and b.start < a.start + a.length:
@@ -211,8 +213,8 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         raise SchemaError("; ".join(errors))
 
     return Schema(
-        format=fmt,
-        version=version,
+        format=fmt or "fixed-width",
+        version=version or "1.0.0",
         fields=tuple(fields),
         record_length=record_length,
         codepage=codepage,

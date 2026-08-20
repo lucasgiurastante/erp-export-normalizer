@@ -17,13 +17,14 @@ the file; the parser is generic. Every company has its own variant of "JD
 Edwards fixed-width" — the schema *is* the portable knowledge.
 
 > Note: the pipeline above shows the full target architecture. The current
-> implementation (Phases 0-4 core, minus the Spark/Databricks connector and
-> hosted SaaS) runs:
+> implementation (Phases 0-4 core, minus hosted SaaS) runs:
 > `[parser] → [converters] → [validator] → [writer]` with JSON, CSV, NDJSON,
 > SQL, Parquet, Excel, and Singer output; heuristic auto-detection
 > (`core/detector.py`); schema inference (`core/generator.py`); parallel
 > validation (`core/parallel.py`); business rules (`core/rules.py`); audit
-> sidecars (`core/audit.py`); and a zero-dependency web UI (`core/webui.py`).
+> sidecars (`core/audit.py`); a zero-dependency web UI (`core/webui.py`); and
+> Pandas/Polars/Spark integration (`core/io.py`). Deep-dive internals:
+> [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md).
 
 ## Modules
 
@@ -38,7 +39,7 @@ Edwards fixed-width" — the schema *is* the portable knowledge.
 | `core/writer.py`    | JSON/CSV/NDJSON/SQL + Parquet/Excel (optional deps)                           |
 | `core/generator.py` | Schema inference from example files (delimited) (Phase 2)                     |
 | `core/parallel.py`  | Chunked multiprocessing with deterministic ordering (Phase 2)                 |
-| `core/io.py`        | `read_erp()` → Pandas/Polars DataFrames (Phase 2)                             |
+| `core/io.py`        | `read_erp()` → Pandas/Polars/Spark DataFrames (Phase 2/4)         |
 | `core/rules.py`     | Business rules: sum / balance, O(1) memory (Phase 3)                          |
 | `core/audit.py`     | SHA-256 hashes + conversion summary sidecar (Phase 3)                         |
 | `core/webui.py`     | Zero-dependency web UI: schema generation + preview (Phase 3/4)               |
@@ -115,7 +116,8 @@ of the audit trail for regulated users (banking, health).
 - **Phase 4 — Ecosystem (6+ months).** Airbyte/Singer source connector,
   Databricks/Spark connector, cloud/SaaS for non-developers, schema marketplace.
   Impact: de facto standard for legacy flat files. *(In progress: Singer tap
-  output implemented; Spark/Databricks and hosted SaaS remain.)*
+  output and the Spark `read_erp` backend implemented; hosted SaaS and the
+  marketplace remain.)*
 
 ## Why this roadmap wins
 

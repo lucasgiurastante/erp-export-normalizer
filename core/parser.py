@@ -4,6 +4,7 @@ Fields are sliced by BYTE offsets (not characters): a fixed-width column is
 positional, and each field is decoded separately so that multibyte codepages
 do not break the alignment.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -30,4 +31,10 @@ class FixedWidthReader:
                 yield lineno, record
 
     def parse_record(self, record: bytes) -> list[bytes]:
-        return [record[f.start:f.start + f.length] for f in self.schema.fields]
+        result: list[bytes] = []
+        for f in self.schema.fields:
+            start = f.start
+            length = f.length
+            assert start is not None and length is not None  # fixed-width invariant
+            result.append(record[start : start + length])
+        return result

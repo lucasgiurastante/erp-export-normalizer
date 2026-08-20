@@ -1,4 +1,5 @@
 """Phase 4 tests: Singer tap output and the zero-dependency web UI."""
+
 from __future__ import annotations
 
 import json
@@ -19,22 +20,29 @@ class TestSinger(unittest.TestCase):
     def _run(self, tmp: str, records: list[bytes]):
         input_path = os.path.join(tmp, "in.txt")
         with open(input_path, "wb") as fh:
-            for r in records:
-                fh.write(r + b"\n")
+            fh.writelines(r + b"\n" for r in records)
         out_path = os.path.join(tmp, "out.singer")
-        code = main([
-            "--schema", write_schema(tmp),
-            "--input", input_path,
-            "--output", out_path,
-            "--format", "singer",
-        ])
+        code = main(
+            [
+                "--schema",
+                write_schema(tmp),
+                "--input",
+                input_path,
+                "--output",
+                out_path,
+                "--format",
+                "singer",
+            ]
+        )
         with open(out_path, encoding="utf-8") as fh:
             lines = [json.loads(ln) for ln in fh if ln.strip()]
         return code, lines
 
     def test_singer_messages(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code, lines = self._run(tmp, [REC_OK, rec("2", "B", "20250116", "67890", "EUR")])
+            code, lines = self._run(
+                tmp, [REC_OK, rec("2", "B", "20250116", "67890", "EUR")]
+            )
             self.assertEqual(code, 0)
             self.assertEqual(lines[0]["type"], "SCHEMA")
             self.assertEqual(lines[0]["stream"], "jde_fixed_width")
@@ -120,20 +128,26 @@ class TestWebUi(unittest.TestCase):
             with open(csv_path, "w", encoding="utf-8") as fh:
                 fh.write("date,amount,customer\n20250115,1234.50,CUST A\n")
             gen = self._post("/api/generate", {"input": csv_path})
-            result = self._post("/api/convert", {
-                "input": csv_path,
-                "schema": gen["schema"],
-                "format": "json",
-            })
+            result = self._post(
+                "/api/convert",
+                {
+                    "input": csv_path,
+                    "schema": gen["schema"],
+                    "format": "json",
+                },
+            )
             self.assertEqual(result["exit_code"], 0)
             self.assertIn("records: 1", result["stdout"])
             self.assertEqual(result["preview"][0]["date"], "2025-01-15")
 
     def test_api_convert_missing_input(self):
-        result = self._post("/api/convert", {
-            "input": "/nonexistent/file.txt",
-            "schema": "format: delimited\nfields: []\n",
-        })
+        result = self._post(
+            "/api/convert",
+            {
+                "input": "/nonexistent/file.txt",
+                "schema": "format: delimited\nfields: []\n",
+            },
+        )
         self.assertIn("error", result)
 
 

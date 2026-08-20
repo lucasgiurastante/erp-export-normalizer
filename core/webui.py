@@ -4,6 +4,7 @@ Air-gapped by design: stdlib `http.server` only, no external assets, and the
 server binds to 127.0.0.1 by default. Paths are server-local (single-user
 workstations, per the design rule "no network, no database").
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -60,7 +61,10 @@ async function generate() {
 }
 async function convert() {
   const schemaText = schema.textContent;
-  if (!schemaText || schemaText.startsWith("Error")) { alert("generate first"); return; }
+  if (!schemaText || schemaText.startsWith("Error")) {
+    alert("generate first");
+    return;
+  }
   const r = await post("/api/convert", {
     input: input.value, schema: schemaText, format: format.value,
   });
@@ -120,11 +124,17 @@ class _BaseHandler(BaseHTTPRequestHandler):
             _reply(self, 400, json.dumps({"error": str(exc)}))
             return
         text = yaml.safe_dump(data, sort_keys=False)
-        _reply(self, 200, json.dumps({
-            "schema": text,
-            "delimiter": data["delimiter"],
-            "has_header": data["has_header"],
-        }))
+        _reply(
+            self,
+            200,
+            json.dumps(
+                {
+                    "schema": text,
+                    "delimiter": data["delimiter"],
+                    "has_header": data["has_header"],
+                }
+            ),
+        )
 
     def _api_convert(self, body: dict) -> None:
         from cli import main as cli_main
@@ -151,19 +161,31 @@ class _BaseHandler(BaseHTTPRequestHandler):
             out_path = os.path.join(tmp, f"out.{ext}")
             stdout, stderr = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                code = cli_main([
-                    "--schema", schema_path,
-                    "--input", input_path,
-                    "--output", out_path,
-                    "--format", fmt,
-                ])
+                code = cli_main(
+                    [
+                        "--schema",
+                        schema_path,
+                        "--input",
+                        input_path,
+                        "--output",
+                        out_path,
+                        "--format",
+                        fmt,
+                    ]
+                )
             preview = self._preview(out_path, fmt)
-            _reply(self, 200, json.dumps({
-                "exit_code": code,
-                "stdout": stdout.getvalue(),
-                "stderr": stderr.getvalue(),
-                "preview": preview,
-            }))
+            _reply(
+                self,
+                200,
+                json.dumps(
+                    {
+                        "exit_code": code,
+                        "stdout": stdout.getvalue(),
+                        "stderr": stderr.getvalue(),
+                        "preview": preview,
+                    }
+                ),
+            )
 
     @staticmethod
     def _preview(path: str, fmt: str) -> object:
@@ -180,12 +202,12 @@ class _BaseHandler(BaseHTTPRequestHandler):
 
 
 def make_handler(formats_dir: str):
-    return type(
-        "WebUiHandler", (_BaseHandler,), {"formats_dir": formats_dir}
-    )
+    return type("WebUiHandler", (_BaseHandler,), {"formats_dir": formats_dir})
 
 
-def serve(host: str = "127.0.0.1", port: int = 8000, formats_dir: str = "formats") -> None:
+def serve(
+    host: str = "127.0.0.1", port: int = 8000, formats_dir: str = "formats"
+) -> None:
     httpd = ThreadingHTTPServer((host, port), make_handler(formats_dir))
     actual = httpd.server_address[1]
     print(f"erp-export-normalizer web UI on http://{host}:{actual} (Ctrl-C to stop)")

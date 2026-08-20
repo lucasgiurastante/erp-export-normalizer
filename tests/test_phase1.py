@@ -1,4 +1,5 @@
 """Phase 1 tests: NDJSON/SQL/Parquet/Excel writers, auto-detection, --verbose."""
+
 from __future__ import annotations
 
 import contextlib
@@ -12,16 +13,15 @@ import unittest
 
 from cli import main
 from core import detector as detector_mod
-
 from tests.test_mvp import REC_BAD_DATE, REC_OK, rec, write_schema
 
 try:
-    import pyarrow  # noqa: F401
+    import pyarrow
 except ImportError:
     pyarrow = None
 
 try:
-    import openpyxl  # noqa: F401
+    import openpyxl
 except ImportError:
     openpyxl = None
 
@@ -33,18 +33,23 @@ def ext_for(fmt: str) -> str:
 
 
 class TestWriters(unittest.TestCase):
-    def _run(self, tmp: str, records: list[bytes], fmt: str, extra: list[str] | None = None):
+    def _run(
+        self, tmp: str, records: list[bytes], fmt: str, extra: list[str] | None = None
+    ):
         schema_path = write_schema(tmp)
         input_path = os.path.join(tmp, "input.txt")
         with open(input_path, "wb") as fh:
-            for r in records:
-                fh.write(r + b"\n")
+            fh.writelines(r + b"\n" for r in records)
         out_path = os.path.join(tmp, f"out.{ext_for(fmt)}")
         args = [
-            "--schema", schema_path,
-            "--input", input_path,
-            "--output", out_path,
-            "--format", fmt,
+            "--schema",
+            schema_path,
+            "--input",
+            input_path,
+            "--output",
+            out_path,
+            "--format",
+            fmt,
         ] + (extra or [])
         return main(args), out_path
 
@@ -77,7 +82,8 @@ class TestWriters(unittest.TestCase):
             conn = sqlite3.connect(":memory:")
             conn.execute(
                 'CREATE TABLE "export" '
-                '("id" TEXT, "type" TEXT, "date" TEXT, "amount" NUMERIC, "currency" TEXT)'
+                '("id" TEXT, "type" TEXT, "date" TEXT, '
+                '"amount" NUMERIC, "currency" TEXT)'
             )
             conn.execute(sql)
             self.assertEqual(
@@ -124,8 +130,7 @@ class TestDetector(unittest.TestCase):
     def _write_input(self, tmp: str, records: list[bytes]) -> str:
         path = os.path.join(tmp, "input.txt")
         with open(path, "wb") as fh:
-            for r in records:
-                fh.write(r + b"\n")
+            fh.writelines(r + b"\n" for r in records)
         return path
 
     def test_detector_scores_schemas(self):
@@ -168,13 +173,19 @@ class TestVerbose(unittest.TestCase):
                 fh.write(REC_OK + b"\n" + REC_BAD_DATE + b"\n")
             buf = io.StringIO()
             with contextlib.redirect_stderr(buf):
-                code = main([
-                    "--schema", schema_path,
-                    "--input", input_path,
-                    "--output", os.path.join(tmp, "out.json"),
-                    "--format", "json",
-                    "--verbose",
-                ])
+                code = main(
+                    [
+                        "--schema",
+                        schema_path,
+                        "--input",
+                        input_path,
+                        "--output",
+                        os.path.join(tmp, "out.json"),
+                        "--format",
+                        "json",
+                        "--verbose",
+                    ]
+                )
             self.assertEqual(code, 3)
             diag = buf.getvalue()
             self.assertIn("line 1: OK", diag)
