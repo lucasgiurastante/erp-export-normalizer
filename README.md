@@ -18,6 +18,10 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   (UTF-8, CP850, CP1252, Latin-1, EBCDIC-CP037).
 - **Six output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
   `decimal128` for financial values), and Excel (write-only, bounded memory).
+  Plus **Singer** — tap output (SCHEMA/RECORD/STATE), deterministic, ready
+  for Singer targets and Airbyte's CDK.
+- **Zero-dependency web UI** — `serve` runs a local, air-gapped interface for
+  schema generation and conversion preview (stdlib only, binds to 127.0.0.1).
 - **Fixed-width and delimited** — byte-offset slicing or delimiter splitting
   (`,`/`\t`/`;`/`|`), with optional header rows.
 - **Auto-detection** — omit `--schema`; the tool scores the built-in schema
@@ -92,8 +96,14 @@ erp-normalize --schema formats/jde_ar.yaml --input big.txt --output big.json --w
 # audit evidence sidecar (<output>.sha256)
 erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --checksum
 
+# Singer tap stream (pipe into any Singer target)
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output - --format singer | target-postgres
+
 # validate the schema library
 erp-normalize registry formats/
+
+# zero-dependency web UI (generate schemas without touching YAML)
+erp-normalize serve --port 8000
 ```
 
 A conversion run prints a summary to stdout:
@@ -210,10 +220,12 @@ pytest
 - Phase 2 — parallel processing for multi-GB files, batch globbing, automatic
   schema inference, Pandas/Polars integration. *(Implemented.)*
 - Phase 3 — shared schema registry, semantic business rules, checksums and
-  conversion summaries for audit evidence. *(In progress: rules, audit
-  sidecars, and local registry verification done; community registry and web
-  UI remain.)*
-- Phase 4 — Airbyte/Singer connectors, Databricks/Spark connector, SaaS.
+  conversion summaries for audit evidence. *(Implemented: rules, audit
+  sidecars, local registry verification, and the schema-generation web UI.
+  A centralized community registry remains future.)*
+- Phase 4 — Airbyte/Singer connector, Databricks/Spark connector, SaaS.
+  *(In progress: Singer tap output done; Spark/Databricks connector and
+  hosted SaaS remain.)*
 
 ## License
 

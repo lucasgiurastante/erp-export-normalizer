@@ -152,6 +152,43 @@ class ExcelWriter:
         self._wb.save(self._path)
 
 
+class SingerWriter:
+    """Singer tap output: SCHEMA / RECORD / STATE JSON lines.
+
+    Deterministic by construction: no `time_extracted` timestamps, so the
+    same input always produces the same stream. Compatible with Singer
+    targets and Airbyte's CDK tap runners.
+    """
+
+    def __init__(self, schema: Schema, out: TextIO):
+        self._out = out
+        self._stream = schema.table or schema.format or "export"
+        properties = {f.name: _singer_type(f) for f in schema.fields}
+        message = {
+            "type": "SCHEMA",
+            "stream": self._stream,
+            "schema": {"type": "object", "properties": properties},
+            "key_properties": [],
+        }
+        self._out.write(json.dumps(message) + "\n")
+
+    def write(self, result: RecordResult) -> None:
+        row = {fv.name: _to_jsonable(fv.value) for fv in result.fields}
+        self._out.write(
+            json.dumps({"type": "RECORD", "stream": self._stream, "record": row})
+            + "\n"
+        )
+
+    def finish(self) -> None:
+        self._out.write(json.dumps({"type": "STATE", "value": {}}) + "\n")
+
+
+def _singer_type(field) -> dict:
+    if field.type == "decimal":
+        return {"type": "number"}
+    return {"type": "string"}
+
+
 def make_writer(fmt: str, schema: Schema, out):
     if fmt == "json":
         return JsonWriter(schema, out)
@@ -165,4 +202,6 @@ def make_writer(fmt: str, schema: Schema, out):
         return ParquetWriter(schema, out)
     if fmt == "excel":
         return ExcelWriter(schema, out)
+    if fmt == "singer":
+        return SingerWriter(schema, out)
     raise ValueError(f"unsupported output format: {fmt!r}")

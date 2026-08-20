@@ -38,7 +38,7 @@ EXIT_ERROR = 1
 EXIT_SCHEMA = 2
 EXIT_VALIDATION = 3
 
-TEXT_FORMATS = {"json", "csv", "ndjson", "sql"}
+TEXT_FORMATS = {"json", "csv", "ndjson", "sql", "singer"}
 OUTPUT_EXT = {"excel": "xlsx"}
 
 
@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--output-dir", help="directory for batch (glob) conversions")
     ap.add_argument(
         "--format",
-        choices=["json", "csv", "ndjson", "sql", "parquet", "excel"],
+        choices=["json", "csv", "ndjson", "sql", "parquet", "excel", "singer"],
         default="json",
     )
     ap.add_argument(
@@ -111,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     reg = sub.add_parser("registry", help="validate a schema library directory")
     reg.add_argument("dir", help="directory of *.yaml schemas")
+
+    srv = sub.add_parser(
+        "serve", help="start the zero-dependency web UI (air-gapped)"
+    )
+    srv.add_argument("--host", default="127.0.0.1")
+    srv.add_argument("--port", type=int, default=8000)
     return ap
 
 
@@ -320,6 +326,17 @@ def registry_main(args) -> int:
     return EXIT_SCHEMA if invalid else EXIT_OK
 
 
+def serve_main(args) -> int:
+    from core.webui import serve
+
+    try:
+        serve(host=args.host, port=args.port, formats_dir=args.formats_dir)
+    except OSError as exc:
+        print(f"serve error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
@@ -327,6 +344,8 @@ def main(argv: list[str] | None = None) -> int:
         return generate_main(args)
     if args.command == "registry":
         return registry_main(args)
+    if args.command == "serve":
+        return serve_main(args)
     return convert_main(ap, args)
 
 

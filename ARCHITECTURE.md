@@ -17,13 +17,13 @@ the file; the parser is generic. Every company has its own variant of "JD
 Edwards fixed-width" — the schema *is* the portable knowledge.
 
 > Note: the pipeline above shows the full target architecture. The current
-> implementation (Phases 0-3, minus transformer/mapper stages and the web UI)
-> runs:
+> implementation (Phases 0-4 core, minus the Spark/Databricks connector and
+> hosted SaaS) runs:
 > `[parser] → [converters] → [validator] → [writer]` with JSON, CSV, NDJSON,
-> SQL, Parquet, and Excel output; heuristic auto-detection (`core/detector.py`);
-> schema inference (`core/generator.py`); parallel validation
-> (`core/parallel.py`); business rules (`core/rules.py`); and audit sidecars
-> (`core/audit.py`).
+> SQL, Parquet, Excel, and Singer output; heuristic auto-detection
+> (`core/detector.py`); schema inference (`core/generator.py`); parallel
+> validation (`core/parallel.py`); business rules (`core/rules.py`); audit
+> sidecars (`core/audit.py`); and a zero-dependency web UI (`core/webui.py`).
 
 ## Modules
 
@@ -41,6 +41,7 @@ Edwards fixed-width" — the schema *is* the portable knowledge.
 | `core/io.py`        | `read_erp()` → Pandas/Polars DataFrames (Phase 2)                             |
 | `core/rules.py`     | Business rules: sum / balance, O(1) memory (Phase 3)                          |
 | `core/audit.py`     | SHA-256 hashes + conversion summary sidecar (Phase 3)                         |
+| `core/webui.py`     | Zero-dependency web UI: schema generation + preview (Phase 3/4)               |
 | `formats/`          | Built-in schema library (JDE AR, SAP batch, etc.)                              |
 | `plugins/`          | Hooks for custom parsers (rare binary formats) — future phase                  |
 
@@ -108,12 +109,13 @@ of the audit trail for regulated users (banking, health).
 - **Phase 3 — Network effects (2–4 months).** Central schema registry (community
   shares formats), semantic business rules (debits=credits, totals, cross
   references), checksums + conversion summary (audit evidence), web UI for
-  schema generation. Impact: the niche becomes "critical". *(In progress:
-  rules, audit sidecars, and local registry verification done; centralized
-  community registry and web UI remain.)*
+  schema generation. Impact: the niche becomes "critical". *(Implemented:
+  rules, audit sidecars, local registry verification, web UI. A centralized
+  community registry remains future.)*
 - **Phase 4 — Ecosystem (6+ months).** Airbyte/Singer source connector,
   Databricks/Spark connector, cloud/SaaS for non-developers, schema marketplace.
-  Impact: de facto standard for legacy flat files.
+  Impact: de facto standard for legacy flat files. *(In progress: Singer tap
+  output implemented; Spark/Databricks and hosted SaaS remain.)*
 
 ## Why this roadmap wins
 
