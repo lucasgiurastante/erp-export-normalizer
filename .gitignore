@@ -4,4 +4,5 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
-*.egg-info/.DS_Store
+*.egg-info/
+.DS_Store

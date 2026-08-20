@@ -1,0 +1,16 @@
+format: sap_fi_document
+version: 1.0.0
+description: "SAP FI document export (BKPF header + BSEG line items) - example schema"
+record_length: 78
+codepage: cp1252
+table: sap_fi_document
+fields:
+  - {name: company,  start: 0,  length: 4}
+  - {name: document, start: 4,  length: 10}
+  - {name: year,     start: 14, length: 4}
+  - {name: date,     start: 18, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: account,  start: 26, length: 10}
+  - {name: postkey,  start: 36, length: 2}
+  - {name: amount,   start: 38, length: 15, type: decimal, scale: 2, align: right}
+  - {name: currency, start: 53, length: 3}
+  - {name: text,     start: 56, length: 22}

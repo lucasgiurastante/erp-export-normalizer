@@ -1,0 +1,12 @@
+format: cobol_fixed
+version: 1.0.0
+description: "COBOL sequential export (FD layout, PIC clauses) - example schema"
+record_length: 57
+codepage: ebcdic-cp037
+table: cobol_export
+fields:
+  - {name: record_key,   start: 0,  length: 6}
+  - {name: customer_name, start: 6,  length: 30}
+  - {name: balance,      start: 36, length: 12, type: decimal, scale: 2, align: right}
+  - {name: activity_date, start: 48, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: status,       start: 56, length: 1}

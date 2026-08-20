@@ -1,0 +1,13 @@
+format: jde_ap
+version: 1.0.0
+description: "JD Edwards AP export (Accounts Payable invoices) - example schema"
+record_length: 64
+codepage: cp850
+table: jde_ap_export
+fields:
+  - {name: address,  start: 0,  length: 8}
+  - {name: invoice,  start: 8,  length: 12}
+  - {name: date,     start: 20, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: amount,   start: 28, length: 13, type: decimal, scale: 2, align: right}
+  - {name: currency, start: 41, length: 3}
+  - {name: supplier, start: 44, length: 20}

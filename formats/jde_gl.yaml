@@ -1,0 +1,14 @@
+format: jde_gl
+version: 1.0.0
+description: "JD Edwards GL export (General Ledger postings) - example schema"
+record_length: 81
+codepage: cp850
+table: jde_gl_export
+fields:
+  - {name: ledger,     start: 0,  length: 2}
+  - {name: account,    start: 2,  length: 12}
+  - {name: date,       start: 14, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: debit,      start: 22, length: 13, type: decimal, scale: 2, align: right}
+  - {name: credit,     start: 35, length: 13, type: decimal, scale: 2, align: right}
+  - {name: currency,   start: 48, length: 3}
+  - {name: description, start: 51, length: 30}

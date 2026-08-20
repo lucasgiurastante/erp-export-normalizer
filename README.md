@@ -1,5 +1,7 @@
 # erp-export-normalizer
 
+[![CI](https://github.com/lucasgiurastante/erp-export-normalizer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasgiurastante/erp-export-normalizer/actions/workflows/ci.yml)
+
 Schema-driven, streaming converter for legacy ERP flat files. Fixed-width
 records (JD Edwards, SAP exports, mainframe dumps) become clean JSON or CSV —
 validated, line-numbered error reports, never loaded fully into memory.
@@ -25,7 +27,9 @@ Same input + same schema = same output. Determinism is the audit guarantee.
 - **Fixed-width and delimited** — byte-offset slicing or delimiter splitting
   (`,`/`\t`/`;`/`|`), with optional header rows.
 - **Auto-detection** — omit `--schema`; the tool scores the built-in schema
-  library against your file and picks the best match.
+  library against your file and picks the best match. Built-in library:
+  `jde_ar`, `jde_ap`, `jde_gl` (JD Edwards), `sap_batch`, `sap_fi_document`
+  (SAP), `cobol_fixed` (EBCDIC mainframe).
 - **Schema generation** — `generate-schema` infers a delimited schema (names,
   types, scale) from an example file.
 - **Batch + parallel** — glob inputs with `--output-dir`; `--workers N`

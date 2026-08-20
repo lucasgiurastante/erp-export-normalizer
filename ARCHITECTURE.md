@@ -43,7 +43,7 @@ Edwards fixed-width" — the schema *is* the portable knowledge.
 | `core/rules.py`     | Business rules: sum / balance, O(1) memory (Phase 3)                          |
 | `core/audit.py`     | SHA-256 hashes + conversion summary sidecar (Phase 3)                         |
 | `core/webui.py`     | Zero-dependency web UI: schema generation + preview (Phase 3/4)               |
-| `formats/`          | Built-in schema library (JDE AR, SAP batch, etc.)                              |
+| `formats/`          | Built-in schema library: JDE AR/AP/GL, SAP batch/FI, COBOL EBCDIC          |
 | `plugins/`          | Hooks for custom parsers (rare binary formats) — future phase                  |
 
 ## Design rules
