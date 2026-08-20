@@ -73,7 +73,9 @@ class Validator:
                 errors.append(f"field '{f.name}': out of range (short line)")
                 fields.append(FieldValue(name=f.name, value=None, raw=""))
                 continue
-            raw_text = raw.decode(self.schema.codepage, errors="replace")
+            raw_text = raw.decode(
+                converters.codec_for(self.schema.codepage), errors="replace"
+            )
             try:
                 value = converters.convert_field(raw, f, self.schema.codepage)
             except converters.ConversionError as exc:
@@ -85,7 +87,9 @@ class Validator:
     def _validate_delimited(self, line: int, record: bytes) -> RecordResult:
         errors: list[str] = []
         fields: list[FieldValue] = []
-        text = record.decode(self.schema.codepage, errors="replace")
+        text = record.decode(
+            converters.codec_for(self.schema.codepage), errors="replace"
+        )
         parts = text.split(self.schema.delimiter)
         for i, f in enumerate(self.schema.fields):
             if i >= len(parts):

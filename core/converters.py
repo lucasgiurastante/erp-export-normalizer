@@ -12,8 +12,19 @@ class ConversionError(ValueError):
     """Field value not convertible per its type/format in the schema."""
 
 
+CODEC_ALIASES = {
+    "ebcdic-cp037": "cp037",
+    "ebcdic": "cp037",
+}
+
+
+def codec_for(codepage: str) -> str:
+    """Map schema codepage names to Python codec names (e.g. EBCDIC)."""
+    return CODEC_ALIASES.get(codepage, codepage)
+
+
 def decode_field(raw: bytes, field: Field, default_codepage: str) -> str:
-    cp = field.codepage or default_codepage
+    cp = codec_for(field.codepage or default_codepage)
     return raw.decode(cp, errors="strict")
 
 

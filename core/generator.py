@@ -11,6 +11,7 @@ import decimal
 import os
 import re
 
+from . import converters
 from .schema import DELIMITED_FORMAT
 
 DELIMITERS = [",", "\t", ";", "|"]
@@ -95,7 +96,9 @@ def generate_schema(
             if not raw:
                 break
             raw_lines.append(raw)
-    lines = [ln.decode(codepage, errors="replace") for ln in raw_lines]
+    lines = [
+        ln.decode(converters.codec_for(codepage), errors="replace") for ln in raw_lines
+    ]
     nonempty = [ln for ln in lines if ln.strip()]
     if not nonempty:
         raise ValueError("input file is empty")
