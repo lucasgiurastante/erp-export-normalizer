@@ -1,4 +1,4 @@
-"""Writers de salida: JSON / CSV. Streaming: nunca acumula el archivo completo."""
+"""Output writers: JSON / CSV. Streaming: never buffers the whole file."""
 from __future__ import annotations
 
 import csv
@@ -9,7 +9,7 @@ from typing import TextIO
 from .schema import Schema
 from .validator import RecordResult
 
-# Decimal a JSON: float (consumidores máquina). Exactitud total: CSV/SQL (fases 1+).
+# Decimal to JSON: float (machine consumers). Full precision: CSV/SQL (phases 1+).
 def _to_jsonable(value: object) -> object:
     if isinstance(value, decimal.Decimal):
         return float(value)
@@ -50,4 +50,4 @@ def make_writer(fmt: str, schema: Schema, out: TextIO):
         return JsonWriter(schema, out)
     if fmt == "csv":
         return CsvWriter(schema, out)
-    raise ValueError(f"formato de salida no soportado: {fmt!r}")
+    raise ValueError(f"unsupported output format: {fmt!r}")

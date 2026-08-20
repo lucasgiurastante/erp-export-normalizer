@@ -1,8 +1,8 @@
-"""Corte de campos fixed-width, streaming línea a línea.
+"""Fixed-width field slicing, streaming line by line.
 
-Los campos se cortan por offset de BYTES (no caracteres): la columna
-fixed-width es posicional; cada campo se decodifica por separado para que
-codepages multibyte no rompan la alineación.
+Fields are sliced by BYTE offsets (not characters): a fixed-width column is
+positional, and each field is decoded separately so that multibyte codepages
+do not break the alignment.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class FixedWidthReader:
         self.path = path
 
     def records(self) -> Iterator[tuple[int, bytes]]:
-        """Yields (nº de línea, bytes del registro). Salta líneas vacías."""
+        """Yield (line number, record bytes). Skips empty lines."""
         with open(self.path, "rb") as fh:
             for lineno, raw in enumerate(fh, start=1):
                 record = raw.rstrip(b"\r\n")

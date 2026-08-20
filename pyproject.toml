@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "erp-export-normalizer"
+version = "0.1.0"
+description = "Schema-driven streaming converter for legacy ERP flat files to JSON/CSV"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Lucas Giurastante" }]
+keywords = ["erp", "jdedwards", "fixed-width", "etl", "flat-file", "mainframe"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+erp-normalize = "cli:main"
+
+[tool.setuptools]
+packages = ["core"]
+py-modules = ["cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

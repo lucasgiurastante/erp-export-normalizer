@@ -1,4 +1,4 @@
-"""Errores acumulativos (no corta en el primero) + reporte con nº de línea."""
+"""Cumulative error collection (does not stop at the first) + line-numbered report."""
 from __future__ import annotations
 
 import dataclasses
@@ -56,19 +56,19 @@ class Validator:
         length_ok = len(record) == self.schema.record_length
         if not length_ok:
             errors.append(
-                f"longitud {len(record)} != record_length {self.schema.record_length}"
+                f"length {len(record)} != record_length {self.schema.record_length}"
             )
         for f in self.schema.fields:
             raw = record[f.start:f.start + f.length]
             if len(raw) < f.length:
-                errors.append(f"campo '{f.name}': fuera de rango (línea corta)")
+                errors.append(f"field '{f.name}': out of range (short line)")
                 fields.append(FieldValue(name=f.name, value=None, raw=""))
                 continue
             raw_text = raw.decode(self.schema.codepage, errors="replace")
             try:
                 value = converters.convert_field(raw, f, self.schema.codepage)
             except converters.ConversionError as exc:
-                errors.append(f"campo '{f.name}': {exc}")
+                errors.append(f"field '{f.name}': {exc}")
                 value = None
             fields.append(FieldValue(name=f.name, value=value, raw=raw_text))
         return RecordResult(line=line, ok=not errors, errors=errors, fields=fields)

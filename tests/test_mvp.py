@@ -1,4 +1,4 @@
-"""Tests MVP Fase 0: fixed-width → JSON/CSV con schema YAML."""
+"""MVP Phase 0 tests: fixed-width -> JSON/CSV with a YAML schema."""
 from __future__ import annotations
 
 import decimal
@@ -18,26 +18,27 @@ SAMPLE_SCHEMA = {
     "codepage": "cp850",
     "fields": [
         {"name": "id", "start": 0, "length": 10},
-        {"name": "tipo", "start": 10, "length": 15},
-        {"name": "fecha", "start": 25, "length": 8, "type": "date", "format": "YYYYMMDD"},
-        {"name": "monto", "start": 33, "length": 8, "type": "decimal", "scale": 2, "align": "right"},
-        {"name": "moneda", "start": 41, "length": 3},
+        {"name": "type", "start": 10, "length": 15},
+        {"name": "date", "start": 25, "length": 8, "type": "date", "format": "YYYYMMDD"},
+        {"name": "amount", "start": 33, "length": 8, "type": "decimal", "scale": 2, "align": "right"},
+        {"name": "currency", "start": 41, "length": 3},
     ],
 }
 
-def rec(id_: str, cliente: str, fecha: str, monto: str, moneda: str) -> bytes:
+
+def rec(id_: str, customer: str, date_: str, amount: str, currency: str) -> bytes:
     return (
         id_[:10].ljust(10)
-        + cliente[:15].ljust(15)
-        + fecha
-        + monto.rjust(8)
-        + moneda[:3].ljust(3)
+        + customer[:15].ljust(15)
+        + date_
+        + amount.rjust(8)
+        + currency[:3].ljust(3)
     ).encode()
 
 
-REC_OK = rec("0000000001", "CLIENTE X", "20250115", "12345", "USD")
-REC_BAD_DATE = rec("0000000002", "CLIENTE Y", "20251301", "10000", "EUR")
-REC_SHORT = b"0000000003CORTADO"
+REC_OK = rec("0000000001", "CUSTOMER X", "20250115", "12345", "USD")
+REC_BAD_DATE = rec("0000000002", "CUSTOMER Y", "20251301", "10000", "EUR")
+REC_SHORT = b"0000000003CUT"
 
 
 def write_schema(tmp: str) -> str:
@@ -50,20 +51,20 @@ def write_schema(tmp: str) -> str:
 
 
 class TestSchema(unittest.TestCase):
-    def test_ok(self):
+    def test_valid_schema(self):
         sch = schema_mod.build_schema(SAMPLE_SCHEMA)
         self.assertEqual(sch.record_length, 44)
         self.assertEqual(sch.version, "1.0.0")
 
-    def test_overflow_rechazado(self):
+    def test_overflow_rejected(self):
         data = dict(SAMPLE_SCHEMA, fields=[
             {"name": "id", "start": 40, "length": 10},
         ])
         with self.assertRaises(schema_mod.SchemaError) as ctx:
             schema_mod.build_schema(data)
-        self.assertIn("desborda", str(ctx.exception))
+        self.assertIn("overflows", str(ctx.exception))
 
-    def test_overlap_rechazado(self):
+    def test_overlap_rejected(self):
         data = dict(SAMPLE_SCHEMA, fields=[
             {"name": "a", "start": 0, "length": 10},
             {"name": "b", "start": 5, "length": 10},
@@ -72,27 +73,46 @@ class TestSchema(unittest.TestCase):
             schema_mod.build_schema(data)
         self.assertIn("overlap", str(ctx.exception))
 
-    def test_falta_version(self):
+    def test_missing_version_rejected(self):
         data = {k: v for k, v in SAMPLE_SCHEMA.items() if k != "version"}
         with self.assertRaises(schema_mod.SchemaError):
             schema_mod.build_schema(data)
 
 
 class TestConverters(unittest.TestCase):
-    def test_fecha_iso(self):
+    def test_date_to_iso(self):
         self.assertEqual(converters.convert_date("20250115", "YYYYMMDD"), "2025-01-15")
 
-    def test_fecha_invalida(self):
+    def test_invalid_date_rejected(self):
         with self.assertRaises(converters.ConversionError):
             converters.convert_date("20251301", "YYYYMMDD")
 
     def test_decimal_scale(self):
-        field = schema_mod.Field(name="monto", start=0, length=8, type="decimal", scale=2, align="right")
-        self.assertEqual(converters.convert_decimal("    12345", field), decimal.Decimal("123.45"))
+        field = schema_mod.Field(
+            name="amount", start=0, length=8, type="decimal", scale=2, align="right"
+        )
+        self.assertEqual(
+            converters.convert_decimal("    12345", field), decimal.Decimal("123.45")
+        )
 
-    def test_decimal_signo_final(self):
-        field = schema_mod.Field(name="monto", start=0, length=8, type="decimal", scale=2, align="right")
-        self.assertEqual(converters.convert_decimal("  12345-", field), decimal.Decimal("-123.45"))
+    def test_decimal_trailing_sign(self):
+        field = schema_mod.Field(
+            name="amount", start=0, length=8, type="decimal", scale=2, align="right"
+        )
+        self.assertEqual(
+            converters.convert_decimal("  12345-", field), decimal.Decimal("-123.45")
+        )
+
+
+class TestParser(unittest.TestCase):
+    def test_record_slicing(self):
+        sch = schema_mod.build_schema(SAMPLE_SCHEMA)
+        raw = rec("0000000001", "CUSTOMER X", "20250115", "12345", "USD")
+        sliced = parser.FixedWidthReader(sch, "").parse_record(raw)
+        self.assertEqual(sliced[0], b"0000000001")
+        self.assertEqual(sliced[2], b"20250115")
+        self.assertEqual(sliced[3], b"   12345")
+        self.assertEqual(sliced[4], b"USD")
 
 
 class TestPipeline(unittest.TestCase):
@@ -118,9 +138,9 @@ class TestPipeline(unittest.TestCase):
             with open(out_path, encoding="utf-8") as fh:
                 rows = json.load(fh)
             self.assertEqual(rows[0]["id"], "0000000001")
-            self.assertEqual(rows[0]["fecha"], "2025-01-15")
-            self.assertEqual(rows[0]["monto"], 123.45)
-            self.assertEqual(rows[0]["moneda"], "USD")
+            self.assertEqual(rows[0]["date"], "2025-01-15")
+            self.assertEqual(rows[0]["amount"], 123.45)
+            self.assertEqual(rows[0]["currency"], "USD")
 
     def test_csv_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -128,29 +148,29 @@ class TestPipeline(unittest.TestCase):
             self.assertEqual(code, 0)
             with open(out_path, encoding="utf-8") as fh:
                 lines = fh.read().splitlines()
-            self.assertEqual(lines[0], "id,tipo,fecha,monto,moneda")
+            self.assertEqual(lines[0], "id,type,date,amount,currency")
             self.assertIn("2025-01-15", lines[1])
             self.assertIn("123.45", lines[1])
 
-    def test_validacion_acumulativa(self):
+    def test_validation_accumulates(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, _ = self._run(tmp, [REC_OK, REC_BAD_DATE, REC_SHORT], "json")
             self.assertEqual(code, 3)  # EXIT_VALIDATION
             with open(os.path.join(tmp, "out.json"), encoding="utf-8") as fh:
                 rows = json.load(fh)
-            self.assertEqual(len(rows), 1)  # solo la fila válida
+            self.assertEqual(len(rows), 1)  # only the valid row
 
-    def test_dry_run_sin_salida(self):
+    def test_dry_run_no_output_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out_path = self._run(tmp, [REC_OK, REC_BAD_DATE], "json", dry_run=True)
             self.assertEqual(code, 3)
             self.assertFalse(os.path.exists(out_path))
 
-    def test_schema_invalido_exit_2(self):
+    def test_invalid_schema_exit_2(self):
         with tempfile.TemporaryDirectory() as tmp:
             bad = os.path.join(tmp, "bad.yaml")
             with open(bad, "w", encoding="utf-8") as fh:
-                fh.write("format: x\n")  # sin version/record_length/fields
+                fh.write("format: x\n")  # missing version/record_length/fields
             code = main(["--schema", bad, "--input", "x", "--output", "y"])
             self.assertEqual(code, 2)
 
