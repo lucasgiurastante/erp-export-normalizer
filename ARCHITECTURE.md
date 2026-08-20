@@ -17,10 +17,11 @@ the file; the parser is generic. Every company has its own variant of "JD
 Edwards fixed-width" — the schema *is* the portable knowledge.
 
 > Note: the pipeline above shows the full target architecture. The current
-> implementation (MVP, Phase 0) runs a leaner path:
-> `[fixed-width parser] → [converters] → [validator] → [writer]` with JSON/CSV
-> output only. The detector, transformer, and mapper stages arrive in later
-> phases.
+> implementation (Phases 0-1) runs:
+> `[fixed-width parser] → [converters] → [validator] → [writer]` with JSON,
+> CSV, NDJSON, SQL, Parquet, and Excel output, plus heuristic auto-detection
+> (`core/detector.py`) against the schema library. The transformer and mapper
+> stages remain future work.
 
 ## Modules
 
@@ -29,9 +30,10 @@ Edwards fixed-width" — the schema *is* the portable knowledge.
 | `cli.py`            | Entry point, argparse, exit codes (0 ok / 1 error / 2 invalid schema / 3 validation) |
 | `core/schema.py`    | Load/validate YAML (start, length, type, format, codepage, version)            |
 | `core/parser.py`    | Fixed-width field slicing, streaming line by line                              |
+| `core/detector.py`  | Heuristic auto-detection against the schema library (Phase 1)                 |
 | `core/converters.py`| Dates (YYYYMMDD→ISO), decimals (scale), codepages (CP850/EBCDIC→UTF-8)         |
 | `core/validator.py` | Cumulative errors (does not stop at the first), line-numbered report           |
-| `core/writer.py`    | JSON/CSV (NDJSON/Parquet/SQL in later phases)                                  |
+| `core/writer.py`    | JSON/CSV/NDJSON/SQL + Parquet/Excel (optional deps)                           |
 | `formats/`          | Built-in schema library (JDE AR, SAP batch, etc.)                              |
 | `plugins/`          | Hooks for custom parsers (rare binary formats) — future phase                  |
 
@@ -93,6 +95,7 @@ of the audit trail for regulated users (banking, health).
 - **Phase 1 — Adoption (2–4 weeks).** NDJSON, Parquet, Excel, SQL inserts;
   heuristic format auto-detection; built-in schema library (JDE AR/AP, SAP
   batch); verbose per-line diagnostics. Impact: full data teams.
+  *(In progress: writers + detector + JDE AR/SAP batch schemas done.)*
 - **Phase 2 — Scale (1–2 months).** Parallelism for GBs, batch globbing,
   automatic schema inference from example files, Pandas/Polars integration.
   Impact: real enterprise ETLs.

@@ -6,6 +6,7 @@ the knowledge lives in the YAML, not in the code.
 from __future__ import annotations
 
 import dataclasses
+import re
 from typing import Any
 
 import yaml
@@ -13,6 +14,7 @@ import yaml
 SUPPORTED_TYPES = {"string", "date", "decimal"}
 SUPPORTED_ALIGNS = {"left", "right"}
 SUPPORTED_CODEPAGES = {"utf-8", "cp850", "cp1252", "latin-1", "ebcdic-cp037"}
+TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 class SchemaError(ValueError):
@@ -39,6 +41,7 @@ class Schema:
     version: str
     fields: tuple[Field, ...]
     description: str | None = None
+    table: str | None = None
     source_path: str | None = None
 
 
@@ -58,6 +61,7 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
     codepage = data.get("codepage", "utf-8")
     version = data.get("version")
     description = data.get("description")
+    table = data.get("table")
     fields_raw = data.get("fields")
 
     if fmt is None:
@@ -66,6 +70,9 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         errors.append("missing required field 'record_length'")
     if version is None:
         errors.append("missing required field 'version'")
+
+    if table is not None and not TABLE_NAME_RE.fullmatch(str(table)):
+        errors.append(f"invalid SQL table name: {table!r}")
 
     if not isinstance(record_length, int) or record_length <= 0:
         errors.append(f"record_length must be int > 0 (got {record_length!r})")
@@ -145,5 +152,6 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         version=version,
         fields=tuple(fields),
         description=description,
+        table=table,
         source_path=source_path,
     )

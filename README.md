@@ -16,7 +16,12 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   first one; report includes the line number of each failure.
 - **Codepage-aware** — fields are sliced by byte offset and decoded per field
   (UTF-8, CP850, CP1252, Latin-1, EBCDIC-CP037).
+- **Six output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
+  `decimal128` for financial values), and Excel (write-only, bounded memory).
+- **Auto-detection** — omit `--schema`; the tool scores the built-in schema
+  library against your file and picks the best match.
 - **`--dry-run`** — validate without writing output.
+- **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
 - **Deterministic** — identical input produces identical output, every run.
 
 ## Installation
@@ -26,7 +31,11 @@ Requires Python 3.10+.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+
+pip install -e .          # core: JSON/CSV/NDJSON/SQL
+pip install -e ".[parquet]"  # + Parquet (pyarrow)
+pip install -e ".[excel]"    # + Excel (openpyxl)
+pip install -e ".[all]"      # everything
 ```
 
 ## Quick start
@@ -40,6 +49,18 @@ erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.js
 
 # convert to CSV
 erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.csv --format csv
+
+# auto-detect the schema from the built-in library (no --schema)
+erp-normalize --input export.txt --output export.json
+
+# more formats: NDJSON, SQL inserts, Parquet, Excel
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.ndjson --format ndjson
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.sql --format sql
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.parquet --format parquet
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.xlsx --format excel
+
+# per-line diagnostics
+erp-normalize --schema formats/jde_ar.yaml --input export.txt --output export.json --verbose --dry-run
 ```
 
 A conversion run prints a summary to stdout:
@@ -65,6 +86,7 @@ version: 1.0.0
 description: "JD Edwards AR export (Accounts Receivable) - example schema"
 record_length: 44
 codepage: cp850
+table: jde_ar_export
 fields:
   - {name: id,       start: 0,  length: 10}
   - {name: type,     start: 10, length: 15}
@@ -85,6 +107,11 @@ Field attributes:
 | `scale`     | no       | Decimal places for `decimal` (scaleb semantics)  |
 | `align`     | no       | `left` (default) or `right`; padding is stripped  |
 | `codepage`  | no       | Per-field codepage override                       |
+
+Schema-level attributes: `format`, `version` (required), `record_length`
+(required), `codepage` (default `utf-8`), `description`, and `table` — the
+target SQL table name for the `sql` output (validated as an identifier,
+defaults to `export`).
 
 Schemas are validated at load time: required keys, duplicate names, overlapping
 fields, and overflows past `record_length` are rejected with a clear message.

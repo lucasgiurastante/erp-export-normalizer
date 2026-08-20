@@ -1,0 +1,13 @@
+format: sap_batch
+version: 1.0.0
+description: "SAP batch export (FI/CO postings) - example schema"
+record_length: 60
+codepage: cp1252
+table: sap_batch_export
+fields:
+  - {name: document, start: 0,  length: 10}
+  - {name: account,  start: 10, length: 12}
+  - {name: date,     start: 22, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: amount,   start: 30, length: 15, type: decimal, scale: 2, align: right}
+  - {name: currency, start: 45, length: 5}
+  - {name: text,     start: 50, length: 10}

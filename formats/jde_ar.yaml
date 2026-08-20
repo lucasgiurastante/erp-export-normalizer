@@ -3,6 +3,7 @@ version: 1.0.0
 description: "JD Edwards AR export (Accounts Receivable) - example schema"
 record_length: 44
 codepage: cp850
+table: jde_ar_export
 fields:
   - {name: id,       start: 0,  length: 10}
   - {name: type,     start: 10, length: 15}
