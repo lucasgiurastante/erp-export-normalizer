@@ -1,0 +1,11 @@
+format: jde_fixed_width
+version: 1.0.0
+description: "JD Edwards AR export (Cuentas por Cobrar) - schema de ejemplo"
+record_length: 44
+codepage: cp850
+fields:
+  - {name: id,      start: 0,  length: 10}
+  - {name: tipo,    start: 10, length: 15}
+  - {name: fecha,   start: 25, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: monto,   start: 33, length: 8,  type: decimal, scale: 2, align: right}
+  - {name: moneda,  start: 41, length: 3}
