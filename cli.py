@@ -28,6 +28,7 @@ from core import (
     generator,
     parallel,
     parser,
+    plugins,
     rules,
     validator,
     writer,
@@ -65,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--formats-dir",
         default=detector.DEFAULT_FORMATS_DIR,
         help="schema library directory used for auto-detection",
+    )
+    ap.add_argument(
+        "--plugins-dir",
+        default=plugins.DEFAULT_PLUGINS_DIR,
+        help="directory of custom parser plugins (for schemas with 'parser')",
     )
     ap.add_argument(
         "--input", help="input flat file or glob pattern (e.g. 'exports/*.txt')"
@@ -141,6 +147,13 @@ def _resolve_schema(args) -> tuple[schema_mod.Schema | None, int | None]:
     return found.schema, None
 
 
+def make_reader(sch, input_path: str, plugins_dir: str):
+    """Build the record reader: custom plugin reader or the fixed-width one."""
+    if sch.parser:
+        return plugins.load_reader(sch.parser, sch, input_path, plugins_dir)
+    return parser.FixedWidthReader(sch, input_path)
+
+
 def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     sch, code = _resolve_schema(args)
     if code is not None:
@@ -178,8 +191,16 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
             print(f"output error: {exc}", file=sys.stderr)
             return EXIT_ERROR
 
-    reader = parser.FixedWidthReader(sch, args.input)
-    records = reader.records(skip_first=bool(sch.has_header))
+    try:
+        reader = make_reader(sch, args.input, args.plugins_dir)
+    except plugins.PluginError as exc:
+        print(f"plugin error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        records = reader.records(skip_first=bool(sch.has_header))
+    except (OSError, ValueError) as exc:
+        print(f"input error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
     def serial_results():
         val = validator.Validator(sch)
@@ -204,7 +225,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
                     rule_engine.observe({fv.name: fv.value for fv in result.fields})
                 if result.ok and out is not None:
                     out.write(result)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             print(f"input error: {exc}", file=sys.stderr)
             return EXIT_ERROR
         if out is not None:

@@ -43,6 +43,9 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   a JVM only at call time).
 - **`--dry-run`** — validate without writing output.
 - **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
+- **Custom binary parsers (plugins)** — drop a Python `Reader` in `plugins/`
+  and reference it from the schema (`parser: <module>`); validation, error
+  reports and determinism still apply.
 - **Deterministic** — identical input produces identical output, every run.
 
 ## Installation
@@ -176,6 +179,30 @@ rules:
   - {type: sum, field: amount, expected: 123456.78}   # control total
   - {type: balance, positive: debit, negative: credit} # debits = credits
 ```
+
+### Custom parsers (plugins)
+
+For formats the built-in readers cannot handle — binary records, framed
+payloads, packed decimals. A plugin is a Python module in `plugins/` exposing
+a `Reader` class with a `records()` method yielding `(line_no, record_bytes)`
+(the same contract as `parser.FixedWidthReader`). The schema selects it via
+`parser`:
+
+```yaml
+format: framed
+version: 1.0.0
+parser: length_prefixed_frame   # plugins/length_prefixed_frame.py
+codepage: cp1252
+fields:
+  - {name: id,   start: 0,  length: 4}
+  - {name: date, start: 4,  length: 8,  type: date, format: YYYYMMDD}
+  - {name: amt,  start: 12, length: 8,  type: decimal, scale: 2, align: right}
+```
+
+Field `start`/`length` are advisory for plugins (the plugin decides how to
+slice). `record_length` is not required. Validation still runs afterwards, so
+plugins get the same cumulative error report and exit codes. Run with
+`--plugins-dir` to use a non-default plugin directory.
 
 ### DataFrame integration
 

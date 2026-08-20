@@ -52,14 +52,17 @@ class Validator:
         self.schema = schema
 
     def validate_record(self, line: int, record: bytes) -> RecordResult:
-        if self.schema.record_length is not None:
+        if self.schema.parser is not None or self.schema.record_length is not None:
             return self._validate_fixed(line, record)
         return self._validate_delimited(line, record)
 
     def _validate_fixed(self, line: int, record: bytes) -> RecordResult:
         errors: list[str] = []
         fields: list[FieldValue] = []
-        length_ok = len(record) == self.schema.record_length
+        length_ok = (
+            self.schema.record_length is None
+            or len(record) == self.schema.record_length
+        )
         if not length_ok:
             errors.append(
                 f"length {len(record)} != record_length {self.schema.record_length}"

@@ -75,8 +75,9 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 3. ~~**About de GitHub vacío**~~ ✅ resuelto — description + 8 topics (erp, jdedwards, sap, etl, flat-file, mainframe, fixed-width, python).
 4. ~~**Sin CI badge**~~ ✅ resuelto — badge del workflow en README (activo tras push post-fix).
 5. ~~**Biblioteca formats/ pobre**~~ ✅ resuelto — 6 schemas (jde_ar/ap/gl, sap_batch/fi_document, cobol_fixed) + tests de detector por fixture.
-6. **plugins/** — hooks para parsers custom (formato binario raro) listado en
-   ARCHITECTURE como fase futura; directorio no existe.
+6. ~~**plugins/**~~ ✅ resuelto — sistema de plugins operativo (`core/plugins.py`):
+   `discover`/`load_reader`, schema opcional `parser:`, `--plugins-dir`, con el
+   plugin de ejemplo `plugins/length_prefixed_frame.py` (frames binarios) y 6 tests.
 7. **io.py spark backend sin test local** — el skip del suite es ese (requiere JVM).
 
 ### Fix lateral detectado y resuelto

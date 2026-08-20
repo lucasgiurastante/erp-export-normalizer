@@ -50,6 +50,7 @@ class Schema:
     codepage: str = "utf-8"
     delimiter: str | None = None
     has_header: bool | None = None
+    parser: str | None = None
     description: str | None = None
     table: str | None = None
     rules: tuple[dict, ...] | None = None
@@ -101,11 +102,16 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
     fields_raw = data.get("fields")
     rules = _validate_rules(data.get("rules"), errors)
     is_delimited = fmt == DELIMITED_FORMAT
+    parser = data.get("parser")
 
     if fmt is None:
         errors.append("missing required field 'format'")
     if version is None:
         errors.append("missing required field 'version'")
+    if parser is not None and not isinstance(parser, str):
+        errors.append("parser must be a string (plugin module name)")
+    if parser is not None and is_delimited:
+        errors.append("parser cannot be combined with delimited format")
 
     if is_delimited:
         delimiter = data.get("delimiter", ",")
@@ -117,6 +123,12 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         record_length = None
         if data.get("record_length") is not None:
             errors.append("record_length is not allowed for delimited format")
+    elif parser is not None:
+        # plugin parsers define their own record layout; record_length and
+        # field offsets are advisory only
+        delimiter = None
+        has_header = None
+        record_length = data.get("record_length")
     else:
         delimiter = None
         has_header = None
@@ -166,6 +178,10 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
                     "for delimited format"
                 )
             start = length = None
+        elif parser is not None:
+            # plugin parsers slice their own fields; offsets are optional
+            start = raw.get("start")
+            length = raw.get("length")
         else:
             start = raw.get("start")
             length = raw.get("length")
@@ -220,6 +236,7 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         codepage=codepage,
         delimiter=delimiter,
         has_header=has_header,
+        parser=parser,
         description=description,
         table=table,
         rules=rules,

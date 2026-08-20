@@ -10,6 +10,7 @@ from typing import Any
 
 from . import detector as detector_mod
 from .parser import FixedWidthReader
+from .plugins import load_reader
 from .validator import Validator
 
 
@@ -46,9 +47,14 @@ def read_erp(
         schema = found.schema
 
     val = Validator(schema)
+    reader = (
+        load_reader(schema.parser, schema, path)
+        if schema.parser
+        else FixedWidthReader(schema, path)
+    )
     rows: list[dict] = []
     first_error: tuple[int, list[str]] | None = None
-    for lineno, record in FixedWidthReader(schema, path).records():
+    for lineno, record in reader.records():
         result = val.validate_record(lineno, record)
         if result.ok:
             rows.append({fv.name: fv.value for fv in result.fields})
