@@ -79,6 +79,11 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
    `discover`/`load_reader`, schema opcional `parser:`, `--plugins-dir`, con el
    plugin de ejemplo `plugins/length_prefixed_frame.py` (frames binarios) y 6 tests.
 7. **io.py spark backend sin test local** — el skip del suite es ese (requiere JVM).
+8. ~~**Sin presencia en PyPI**~~ ✅ resuelto — `erp-export-normalizer` 0.1.0 publicado
+   (https://pypi.org/project/erp-export-normalizer/). Wheel autocontenida: schemas
+   y plugin ejemplo dentro del paquete (`core/formats/`, `core/plugin_examples/`).
+   Verificado: `pip install erp-export-normalizer` + auto-detección/COBOL/plugin OK.
+   `examples/` con fixtures JDE/SAP/COBOL/binario + comandos copy-paste.
 
 ### Fix lateral detectado y resuelto
 
