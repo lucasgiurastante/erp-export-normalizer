@@ -1,0 +1,15 @@
+format: jde_gl_distinct
+version: 1.0.0
+description: "JD Edwards GL detail variant (company + ledger + account, length 86 to avoid collision with jde_gl length 81)"
+record_length: 86
+codepage: cp850
+table: jde_gl_distinct
+fields:
+  - {name: company,     start: 0,  length: 5}
+  - {name: ledger,      start: 5,  length: 2}
+  - {name: account,     start: 7,  length: 12}
+  - {name: date,        start: 19, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: debit,       start: 27, length: 13, type: decimal, scale: 2, align: right}
+  - {name: credit,      start: 40, length: 13, type: decimal, scale: 2, align: right}
+  - {name: currency,    start: 53, length: 3}
+  - {name: description, start: 56, length: 30}

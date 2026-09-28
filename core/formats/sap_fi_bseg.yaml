@@ -1,0 +1,16 @@
+format: sap_fi_bseg
+version: 1.0.0
+description: "SAP FI BSEG line items (document line level: BELNR/BUZEI/HKONT/DMBTR with trailing-sign negatives)"
+record_length: 75
+codepage: cp1252
+table: sap_fi_bseg
+fields:
+  - {name: bukrs, start: 0,  length: 4}
+  - {name: belnr, start: 4,  length: 10}
+  - {name: gjahr, start: 14, length: 4}
+  - {name: buzei, start: 18, length: 3}
+  - {name: hkont, start: 21, length: 10}
+  - {name: budat, start: 31, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: dmbtr, start: 39, length: 15, type: decimal, scale: 2, align: right}
+  - {name: waers, start: 54, length: 3}
+  - {name: sgtxt, start: 57, length: 18}

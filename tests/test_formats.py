@@ -241,3 +241,153 @@ class TestDetectorCollision(unittest.TestCase):
             self.assertIn("ambiguous match, pass --schema", err.getvalue())
 
 
+
+
+# P1-2 new library schemas (append-only; existing 11 tests + collision untouched).
+
+
+def rec_sap_bseg(
+    bukrs: str,
+    belnr: str,
+    gjahr: str,
+    buzei: str,
+    hkont: str,
+    budat: str,
+    dmbtr: str,
+    waers: str,
+    sgtxt: str,
+) -> bytes:
+    return (
+        pad(bukrs, 4)
+        + pad(belnr, 10)
+        + pad(gjahr, 4)
+        + pad(buzei, 3)
+        + pad(hkont, 10)
+        + pad(budat, 8)
+        + dmbtr.rjust(15).encode("ascii")
+        + pad(waers, 3)
+        + pad(sgtxt, 18)
+    )
+
+
+def rec_jde_gl2(
+    company: str,
+    ledger: str,
+    account: str,
+    date: str,
+    debit: str,
+    credit: str,
+    currency: str,
+    description: str,
+) -> bytes:
+    return (
+        pad(company, 5)
+        + pad(ledger, 2)
+        + pad(account, 12)
+        + pad(date, 8)
+        + debit.rjust(13).encode("ascii")
+        + credit.rjust(13).encode("ascii")
+        + pad(currency, 3)
+        + pad(description, 30)
+    )
+
+
+SAP_BSEG_OK = rec_sap_bseg(
+    "1000",
+    "0100000001",
+    "2025",
+    "001",
+    "4000000000",
+    "20250115",
+    "000000012345600",
+    "EUR",
+    "CUSTOMER PAYMENT",
+)
+SAP_BSEG_TRAIL = rec_sap_bseg(
+    "1000",
+    "0100000001",
+    "2025",
+    "002",
+    "5000000000",
+    "20250115",
+    "00000001234560-",
+    "EUR",
+    "DISCOUNT TAKEN",
+)
+JDE_GL2_OK = rec_jde_gl2(
+    "00001",
+    "AA",
+    "1.1010.1010",
+    "20250301",
+    "1000000000000",
+    "0000000000000",
+    "USD",
+    "RENT EXPENSE",
+)
+JDE_GL2_TRAIL = rec_jde_gl2(
+    "00002",
+    "BA",
+    "4.4040.4040",
+    "20250304",
+    "00000002500- ",
+    "0000000000000",
+    "EUR",
+    "CREDIT MEMO NEG",
+)
+
+
+class TestP12NewFormats(unittest.TestCase):
+    def _convert(self, fmt: str, record: bytes) -> list[dict]:
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "input.txt")
+            with open(in_path, "wb") as fh:
+                fh.write(record + b"\n")
+            out_path = os.path.join(tmp, "out.json")
+            code = main(
+                [
+                    "--schema",
+                    os.path.join(FORMATS_DIR, f"{fmt}.yaml"),
+                    "--input",
+                    in_path,
+                    "--output",
+                    out_path,
+                    "--format",
+                    "json",
+                ]
+            )
+            self.assertEqual(code, 0, fmt)
+            with open(out_path, encoding="utf-8") as fh:
+                return json.load(fh)
+
+    def _detect(self, record: bytes) -> str | None:
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "input.txt")
+            with open(in_path, "wb") as fh:
+                fh.write(record + b"\n")
+            found = detector_mod.Detector(FORMATS_DIR).detect(in_path)
+            return os.path.basename(found.source_path) if found else None
+
+    def test_sap_fi_bseg_converts(self):
+        rows = self._convert("sap_fi_bseg", SAP_BSEG_OK)
+        self.assertEqual(rows[0]["belnr"], "0100000001")
+        self.assertEqual(rows[0]["buzei"], "001")
+        self.assertEqual(rows[0]["hkont"], "4000000000")
+        self.assertEqual(rows[0]["budat"], "2025-01-15")
+        self.assertEqual(rows[0]["dmbtr"], 123456.0)
+        rows_trail = self._convert("sap_fi_bseg", SAP_BSEG_TRAIL)
+        self.assertEqual(rows_trail[0]["dmbtr"], -12345.6)
+
+    def test_jde_gl_distinct_converts(self):
+        rows = self._convert("jde_gl_distinct", JDE_GL2_OK)
+        self.assertEqual(rows[0]["company"], "00001")
+        self.assertEqual(rows[0]["account"], "1.1010.1010")
+        self.assertEqual(rows[0]["date"], "2025-03-01")
+        self.assertEqual(rows[0]["debit"], 10000000000.0)
+        rows_trail = self._convert("jde_gl_distinct", JDE_GL2_TRAIL)
+        self.assertEqual(rows_trail[0]["debit"], -25.0)
+
+    def test_detect_sap_fi_bseg(self):
+        self.assertEqual(self._detect(SAP_BSEG_OK), "sap_fi_bseg.yaml")
+
+    def test_detect_jde_gl_distinct(self):
+        self.assertEqual(self._detect(JDE_GL2_OK), "jde_gl_distinct.yaml")
