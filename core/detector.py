@@ -16,8 +16,9 @@ from .schema import Schema, SchemaError, load_schema
 from .validator import Validator
 
 DEFAULT_FORMATS_DIR = os.path.join(os.path.dirname(__file__), "formats")
-SAMPLE_RECORDS = 5
+SAMPLE_RECORDS = 20
 PERFECT_RECORD_BONUS = 10
+AMBIGUITY_MARGIN = 5
 
 
 class Detection:
@@ -55,15 +56,13 @@ class Detector:
 
     @staticmethod
     def _score(schema: Schema, records: list[bytes]) -> int:
-        """Score = points from records that parse perfectly. A record must be
-        fully valid (record length + every field converts) to contribute,
-        so a total of 0 means 'no match'. Delimited schemas are not scored."""
         if schema.record_length is None:
             return 0
         val = Validator(schema)
         total = 0
         for record in records:
             result = val.validate_record(0, record)
+            total += sum(1 for fv in result.fields if fv.value is not None)
             if result.ok:
                 total += PERFECT_RECORD_BONUS + len(schema.fields)
         return total
@@ -72,11 +71,27 @@ class Detector:
         records = self._sample_records(path)
         if not records:
             return None
-        best: Detection | None = None
-        for source_path, schema in self._candidates():
-            score = self._score(schema, records)
-            if best is None or score > best.score:
-                best = Detection(schema=schema, source_path=source_path, score=score)
-        if best is not None and best.score > 0:
-            return best
-        return None
+        scored: list[tuple[int, str, Schema]] = [
+            (self._score(schema, records), source_path, schema)
+            for source_path, schema in self._candidates()
+        ]
+        if not scored:
+            return None
+        # Stable sort: ties keep the path-sorted candidate order.
+        scored.sort(key=lambda item: item[0], reverse=True)
+        (best_score, best_path, best_schema), *rest = scored
+        if best_score <= 0:
+            return None
+        if rest:
+            second_score, _, second_schema = rest[0]
+            if second_score > 0 and best_score - second_score < AMBIGUITY_MARGIN:
+                if (
+                    best_schema.record_length is not None
+                    and best_schema.record_length == second_schema.record_length
+                ):
+                    print(
+                        "ambiguous match, pass --schema",
+                        file=sys.stderr,
+                    )
+                return None
+        return Detection(schema=best_schema, source_path=best_path, score=best_score)

@@ -205,3 +205,39 @@ class TestLibraryDetector(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+import contextlib
+import io
+class TestDetectorCollision(unittest.TestCase):
+    def test_detect_collision_same_length_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            formats_dir = os.path.join(tmp, "formats")
+            os.mkdir(formats_dir)
+            with open(os.path.join(formats_dir, "collision_a.yaml"), "w") as fh:
+                fh.write(
+                    "format: collision_a\n"
+                    "version: 1.0.0\n"
+                    "record_length: 10\n"
+                    "fields:\n"
+                    "  - {name: a1, start: 0, length: 5}\n"
+                    "  - {name: a2, start: 5, length: 5}\n"
+                )
+            with open(os.path.join(formats_dir, "collision_b.yaml"), "w") as fh:
+                fh.write(
+                    "format: collision_b\n"
+                    "version: 1.0.0\n"
+                    "record_length: 10\n"
+                    "fields:\n"
+                    "  - {name: b1, start: 0, length: 3}\n"
+                    "  - {name: b2, start: 3, length: 3}\n"
+                    "  - {name: b3, start: 6, length: 4}\n"
+                )
+            in_path = os.path.join(tmp, "input.txt")
+            with open(in_path, "wb") as fh:
+                fh.write(b"ABCDEFGHIJ\n")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                found = detector_mod.Detector(formats_dir).detect(in_path)
+            self.assertIsNone(found)
+            self.assertIn("ambiguous match, pass --schema", err.getvalue())
+
+
