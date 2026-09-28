@@ -89,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="parallel validation processes (deterministic output)",
     )
     ap.add_argument(
+        "--chunk-lines",
+        type=int,
+        default=parallel.CHUNK_LINES,
+        help="lines per parallel chunk (only with --workers > 1)",
+    )
+    ap.add_argument(
         "--verbose",
         action="store_true",
         help="print per-line diagnostics to stderr (OK/ERR per record)",
@@ -217,7 +223,9 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
             yield val.validate_record(lineno, record)
 
     results = (
-        parallel.validate_parallel(records, sch, args.workers)
+        parallel.validate_parallel(
+            records, sch, args.workers, chunk_lines=args.chunk_lines
+        )
         if args.workers and args.workers > 1
         else serial_results()
     )
@@ -264,6 +272,9 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         summary_line += f" | rule violations: {len(violations)}"
     print(summary_line, file=sys.stderr)
     for err in report["error_lines"]:
+        # P1-3: err["errors"] ya trae "field 'X': <msg> | raw='...'"
+        # (raw truncado a 50 chars en validator); prefijo "line N:" intacto
+        # para scripts que lo parsean. "details" es estructurado opcional.
         print(f"  line {err['line']}: {'; '.join(err['errors'])}", file=sys.stderr)
     if violations or report["errors"]:
         return EXIT_VALIDATION

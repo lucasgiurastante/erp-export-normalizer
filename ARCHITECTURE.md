@@ -73,6 +73,31 @@ fields:
 `version` is required: schemas are versioned artifacts, and the version is part
 of the audit trail for regulated users (banking, health).
 
+## Parallel validation (P0-5)
+
+`core/parallel.py:validate_parallel` validates fixed-size chunks in a
+process pool and yields results in input order, so `--workers N` output
+is byte-identical to `--workers 1`. Chunk size is tunable via
+`--chunk-lines` (default `CHUNK_LINES = 100k`); the serial path ignores it.
+
+Bench (`scripts/bench_parallel.py`, 50k lines = `examples/data/jde_ar.txt`
+repeated, JSON output, single run, machine-dependent):
+
+| workers | chunk-lines | seconds | md5                              |
+|---------|-------------|---------|----------------------------------|
+| 1       | 10k*        | 1.16    | e267078458ad8eb5f2eaeb7788b76c90 |
+| 2       | 10k         | 2.52    | e267078458ad8eb5f2eaeb7788b76c90 |
+| 2       | 100k        | 3.64    | e267078458ad8eb5f2eaeb7788b76c90 |
+| 4       | 10k         | 2.11    | e267078458ad8eb5f2eaeb7788b76c90 |
+| 4       | 100k        | 5.21    | e267078458ad8eb5f2eaeb7788b76c90 |
+
+\* serial path ignores `--chunk-lines` (one run).
+
+Reading: at 50k lines (~2.2 MB) pool + pickling overhead dominates —
+parallel is slower than serial. `CHUNK_LINES` default stays at 100k;
+parallel pays off on GB-scale inputs where chunk dispatch is amortized.
+All outputs byte-identical (same md5).
+
 ## Users: beneficiaries vs. affected
 
 ### Beneficiaries (in order of value)
