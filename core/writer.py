@@ -48,15 +48,24 @@ def _sql_value(value: object) -> str:
 
 class JsonWriter:
     def __init__(self, schema: Schema, out: TextIO):
-        self._rows: list[dict] = []
         self._out = out
+        self._first = True
+        self._out.write("[")
 
     def write(self, result: RecordResult) -> None:
-        self._rows.append({fv.name: _to_jsonable(fv.value) for fv in result.fields})
+        row = {fv.name: _to_jsonable(fv.value) for fv in result.fields}
+        if self._first:
+            self._out.write("\n")
+            self._first = False
+        else:
+            self._out.write(",\n")
+        json.dump(row, self._out, ensure_ascii=False, indent=2)
 
     def finish(self) -> None:
-        json.dump(self._rows, self._out, ensure_ascii=False, indent=2)
-        self._out.write("\n")
+        if self._first:
+            self._out.write("]\n")
+        else:
+            self._out.write("\n]\n")
 
 
 class CsvWriter:
