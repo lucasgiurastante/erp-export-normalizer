@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import decimal
 import json
 import os
 import socket
+import sys
 import tempfile
 import threading
+import types as pytypes
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -149,6 +152,114 @@ class TestWebUi(unittest.TestCase):
             },
         )
         self.assertIn("error", result)
+
+
+class TestSparkMock(unittest.TestCase):
+    """Spark backend type mapping without JVM (P1-1): fake SparkSession."""
+
+    def test_spark_type_mapping_without_jvm(self):
+        from core import io as io_mod
+
+        captured: dict = {}
+
+        class FakeStringType:
+            def __repr__(self) -> str:
+                return "StringType()"
+
+        class FakeDecimalType:
+            def __init__(self, precision: int, scale: int):
+                self.precision = precision
+                self.scale = scale
+
+        class FakeStructField:
+            def __init__(self, name, dataType, nullable=True):  # noqa: N803
+                self.name = name
+                self.dataType = dataType
+                self.nullable = nullable
+
+        class FakeStructType:
+            def __init__(self, fields):
+                self.fields = list(fields)
+
+        class FakeDataFrame:
+            def __init__(self, data, schema):
+                self._data = list(data)
+                self.schema = schema
+
+            def collect(self):
+                names = [f.name for f in self.schema.fields]
+                return [dict(zip(names, row)) for row in self._data]
+
+        class FakeSparkSession:
+            builder = None  # patched below
+
+            def createDataFrame(self, data, schema):
+                captured["data"] = list(data)
+                captured["schema"] = schema
+                return FakeDataFrame(data, schema)
+
+        class FakeBuilder:
+            def __init__(self, session):
+                self._session = session
+
+            def appName(self, *args, **kwargs):
+                return self
+
+            def getOrCreate(self):
+                return self._session
+
+        session = FakeSparkSession()
+        FakeSparkSession.builder = FakeBuilder(session)
+
+        pyspark_mod = pytypes.ModuleType("pyspark")
+        sql_mod = pytypes.ModuleType("pyspark.sql")
+        types_mod = pytypes.ModuleType("pyspark.sql.types")
+        sql_mod.SparkSession = FakeSparkSession
+        types_mod.DecimalType = FakeDecimalType
+        types_mod.StringType = FakeStringType
+        types_mod.StructField = FakeStructField
+        types_mod.StructType = FakeStructType
+
+        saved = {
+            k: sys.modules.get(k)
+            for k in ("pyspark", "pyspark.sql", "pyspark.sql.types")
+        }
+        sys.modules["pyspark"] = pyspark_mod
+        sys.modules["pyspark.sql"] = sql_mod
+        sys.modules["pyspark.sql.types"] = types_mod
+
+        def _restore():
+            for k, v in saved.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
+
+        self.addCleanup(_restore)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "in.txt")
+            with open(in_path, "wb") as fh:
+                fh.write(rec("1", "A", "20250115", "12345", "USD") + b"\n")
+                fh.write(rec("2", "B", "20250116", "67890", "EUR") + b"\n")
+            # Always mocked: works whether or not pyspark/JVM is installed.
+            df = io_mod.read_erp(in_path, schema=write_schema(tmp), backend="spark")
+            rows = df.collect()
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["date"], "2025-01-15")
+            self.assertEqual(rows[1]["amount"], decimal.Decimal("678.90"))
+            self.assertEqual(
+                [f.name for f in df.schema.fields],
+                ["id", "type", "date", "amount", "currency"],
+            )
+            by_name = {f.name: f for f in captured["schema"].fields}
+            amount_type = by_name["amount"].dataType
+            self.assertIsInstance(amount_type, FakeDecimalType)
+            self.assertEqual((amount_type.precision, amount_type.scale), (38, 2))
+            for name in ("id", "type", "date", "currency"):
+                self.assertIsInstance(
+                    by_name[name].dataType, FakeStringType, f"field {name!r}"
+                )
 
 
 if __name__ == "__main__":
