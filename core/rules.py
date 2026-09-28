@@ -26,26 +26,44 @@ class RuleViolation:
 
 class RuleEngine:
     def __init__(self, rules: tuple[dict, ...] | None):
+        for i, spec in enumerate(rules or ()):
+            rtype = spec.get("type")
+            if rtype == "sum":
+                if "field" not in spec or "expected" not in spec:
+                    raise ValueError(f"rules[{i}]: 'sum' requires 'field'+'expected'")
+            elif rtype == "balance":
+                if "positive" not in spec or "negative" not in spec:
+                    raise ValueError(f"rules[{i}]: 'balance' requires 'positive'+'negative'")
+            else:
+                raise ValueError(f"rules[{i}]: unsupported type {rtype!r}")
         self._rules = rules or ()
         self._totals: list[dict[str, decimal.Decimal]] = [{} for _ in self._rules]
+        self._field_errors: list[RuleViolation] = []
 
     def observe(self, row: dict[str, object]) -> None:
         for spec, acc in zip(self._rules, self._totals, strict=True):
             rtype = spec["type"]
             if rtype == "sum":
-                self._accumulate(acc, spec["field"], row)
+                self._accumulate(acc, spec["field"], row, spec)
             elif rtype == "balance":
-                self._accumulate(acc, spec["positive"], row)
-                self._accumulate(acc, spec["negative"], row)
+                self._accumulate(acc, spec["positive"], row, spec)
+                self._accumulate(acc, spec["negative"], row, spec)
 
-    @staticmethod
-    def _accumulate(acc: dict, field: str, row: dict) -> None:
+    def _accumulate(self, acc: dict, field: str, row: dict, spec: dict) -> None:
         value = row.get(field)
         if isinstance(value, decimal.Decimal):
             acc[field] = acc.get(field, decimal.Decimal(0)) + value
+        elif isinstance(value, int):
+            acc[field] = acc.get(field, decimal.Decimal(0)) + decimal.Decimal(value)
+        elif isinstance(value, float):
+            acc[field] = acc.get(field, decimal.Decimal(0)) + decimal.Decimal(str(value))
+        else:
+            self._field_errors.append(
+                RuleViolation(spec, f"rule '{spec['type']}:{field}': non-numeric {value!r}")
+            )
 
     def finalize(self) -> list[RuleViolation]:
-        violations: list[RuleViolation] = []
+        violations: list[RuleViolation] = list(self._field_errors)
         for spec, acc in zip(self._rules, self._totals, strict=True):
             rtype = spec["type"]
             if rtype == "sum":
