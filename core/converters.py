@@ -42,19 +42,25 @@ def convert_text(text: str, field: Field) -> object:
     return text
 
 
+DATE_FORMATS = {
+    "YYYYMMDD": "%Y%m%d",
+    "YYYY-MM-DD": "%Y-%m-%d",
+    "DDMMYYYY": "%d%m%Y",
+    "DD/MM/YYYY": "%d/%m/%Y",
+    "YYMMDD": "%y%m%d",
+}
+
+
 def convert_date(text: str, fmt: str | None) -> str:
     stripped = text.strip()
-    if fmt == "YYYYMMDD":
-        if len(stripped) != 8 or not stripped.isdigit():
-            raise ConversionError(f"invalid date {text!r} (expected YYYYMMDD)")
-        try:
-            dt = datetime.date(
-                int(stripped[0:4]), int(stripped[4:6]), int(stripped[6:8])
-            )
-        except ValueError as exc:
-            raise ConversionError(f"invalid date {text!r}: {exc}") from exc
-        return dt.isoformat()
-    raise ConversionError(f"unsupported date format: {fmt!r}")
+    pattern = DATE_FORMATS.get(fmt or "")
+    if pattern is None:
+        raise ConversionError(f"unsupported date format: {fmt!r}")
+    try:
+        dt = datetime.datetime.strptime(stripped, pattern).date()
+    except ValueError as exc:
+        raise ConversionError(f"invalid date {text!r} (expected {fmt})") from exc
+    return dt.isoformat()
 
 
 def convert_decimal(text: str, field: Field) -> decimal.Decimal:

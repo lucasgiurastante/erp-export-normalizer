@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 
 SUPPORTED_TYPES = {"string", "date", "decimal"}
+SUPPORTED_DATE_FORMATS = {"YYYYMMDD", "YYYY-MM-DD", "DDMMYYYY", "DD/MM/YYYY", "YYMMDD"}
 SUPPORTED_ALIGNS = {"left", "right"}
 SUPPORTED_CODEPAGES = {"utf-8", "cp850", "cp1252", "latin-1", "ebcdic-cp037"}
 TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -170,6 +171,9 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
             errors.append(f"fields[{i}] '{name}': scale must be int >= 0")
         if ftype == "date" and raw.get("format") is None:
             errors.append(f"fields[{i}] '{name}': type date requires 'format'")
+        if ftype == "date" and raw.get("format") is not None:
+            if raw.get("format") not in SUPPORTED_DATE_FORMATS:
+                errors.append(f"fields[{i}] '{name}': unsupported date format {raw.get('format')!r}")
 
         if is_delimited:
             if "start" in raw or "length" in raw:
