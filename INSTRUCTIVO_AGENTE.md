@@ -48,23 +48,54 @@ Exit codes `cli.py:40-43`: 0 ok / 1 runtime / 2 schema inválido / 3 errores val
 | `core/audit.py:25 build_summary` | sidecar `.sha256` | |
 | `core/io.py:21 read_erp()` | API lib Pandas/Polars/Spark | |
 | `core/plugins.py:30 load_reader` | readers binarios custom | ejemplo `core/plugin_examples/length_prefixed_frame.py` |
-| `core/formats/` | 6 YAML built-in: jde_ar/ap/gl, sap_batch, sap_fi_document, cobol_fixed | |
-| `tests/` | 13 files: mvp/phase1-4/plugins/formats/p0_*/p1_*/plugin_api | 113 OK, 1 skip pyspark |
+| `core/copybook.py` | copybook COBOL → schema YAML | FD/01/05 + PIC, USAGE COMP-3/COMP |
+| `core/crosscheck.py` | reconciliación entre archivos | sum/count/unique/missing, índice de claves |
+| `core/diff.py` | diff por clave entre exports | added/removed/changed con detalle de campo |
+| `core/formats/` | 9 YAML built-in: jde_ar/ap/gl/gl_distinct, sap_batch, sap_fi_document/bseg, cobol_fixed/packed | |
+| `tests/` | 19 files | 217 OK, 1 skip pyspark |
 | `docs/PLUGIN_API_v1.md` | contrato congelado del plugin `Reader` v1 (§4b) |
+| `scripts/perf_profile.py` | perfil de rendimiento + gate de regresión | ver §4c |
 | `examples/` | fixtures + README copy-paste | úsalo como fixtures |
 | `docs/CONTEXTO.md`, `ARCHITECTURE.md`, `docs/TECHNICAL_DESIGN.md` | estado y diseño | lee CONTEXTO antes de planificar |
 
 Docs fuente verdad: `README.md:5-40` propósito, `README.md:75-137` install/run, `README.md:268-278` test/lint.
 
-## 4. Estado actual (2026-09-29)
+**Credenciales de PyPI: §4.** Viven en el gestor de contraseñas del iPhone
+del usuario, nunca en el repo. Si hay que publicar, se las pides a él.
+
+## 4. Estado actual (2026-09-29, cierre de P1)
 
 - META: aplicar beca `https://claude.com/contact-sales/claude-for-oss`.
 - Tablero: `https://trello.com/b/c1hooM8i/erp-export-normalizer-seguimiento`.
 - **P0-1..P0-5 + P1-1 + P1-2 + P1-3 ✅ cerrados** (ver tabla en `docs/CONTEXTO.md`).
   Plugin API v1 congelada en `docs/PLUGIN_API_v1.md` + 4 tests de contrato.
-- Suite: **113 tests OK** (1 skip pyspark sin JVM), ruff limpio, mypy limpio,
-  `main` sincronizada con `origin/main`.
-- Pendiente: tag + release `v0.2.0`.
+- **Ronda P1 alto valor ✅ cerrada** (6 tareas nuevas, ver §4b).
+- Suite: **217 tests OK** (1 skip pyspark sin JVM), ruff y mypy limpios,
+  `main` sincronizada con `origin/main`, CI verde en 3.10–3.13.
+- **v0.2.0 publicada**: tag en git, release en GitHub y wheel en PyPI
+  (`erp-export-normalizer==0.2.0`, verificado con `pip install` limpio).
+
+### Credenciales de PyPI — dónde están
+
+**El 2FA y el token de PyPI están en el gestor de contraseñas del iPhone del
+usuario** (iCloud Keychain), no en este repositorio ni en este equipo.
+
+Si hay que volver a publicar, **pídeselo al usuario**: el agente no tiene
+acceso al iPhone y no debe inventar ni buscar credenciales.
+
+```bash
+# el usuario aporta el token; se pasa solo por variable de entorno,
+# nunca se escribe en un archivo del repo ni en el historial del shell
+TWINE_USERNAME="__token__" TWINE_PASSWORD="<token>" .venv/bin/twine upload dist/*
+```
+
+Token limitado al proyecto `erp-export-normalizer`. Si se filtra:
+revocar en `https://pypi.org/manage/account/token/` y generar otro.
+
+**Nunca** commitear `.pypirc`, `.env`, `*token*.txt`. Están en `.gitignore`
+(`df6541f`) porque un `git add -A` los subía. El 2026-09-29 se subió una
+0.2.0 desde `erp-export-token.txt` en la raíz; el archivo se borró tras
+usarlo. No reintroducir esa práctica.
 
 ## 4b. Colas cerradas (2026-09-28/29) — no rehacer
 
@@ -81,16 +112,34 @@ Las tareas de §5 están **todas implementadas**. Detalle y commits:
 | P1-2 schemas | `6f559e5` | `sap_fi_bseg`, `jde_gl_distinct` |
 | P1-3 errores UX | `f866fb1` | `field` + `raw` truncado a 50 chars |
 
+Ronda P1 alto valor del 2026-09-29:
+
+| Tarea | Commit | Nota |
+|---|---|---|
+| COBOL COMP-3 | `243fd62` | `type: packed`, BCD, no pasa por codepage |
+| COPYBOOK import | `5f37738` | `erp-normalize copybook` → schema YAML |
+| `crosscheck` | `c58fcfa` | sum/count/unique/missing entre archivos |
+| `diff` | `db9fd94` | added/removed/changed por clave |
+| Perf en CI | `bee92f1` | gate relativo + determinismo absoluto |
+| Singer `STATE` | `15bbef1` | `--state` reanuda byte-idéntico |
+| Release v0.2.0 | `24acb6b` | tag + notas + PyPI |
+
 **Antes de tocar código, lee esta tabla y `git log`.** Si buscas trabajo nuevo,
 las candidatas priorizadas están en `docs/CONTEXTO.md` §"Pasos a seguir".
 
-## 4c. Trampa conocida
+## 4c. Trampas conocidas
 
 `ruff format` **no** está en `pyproject.toml` como `exclude`; formatea también
 los bloques `python` de los `.md`. Si `ruff format .` toca `docs/*.md` es
 esperado. Ejecuta `ruff format .` y `ruff check --fix .` **antes** de commitear:
 los commits P0/P1 dejaron 9 ficheros sin formatear y el job `lint` de CI
 habría fallado.
+
+**El gate de performance no puede comparar máquinas distintas.** El
+`perf-baseline.json` está medido en el Mac del usuario, así que en el runner
+de GitHub la firma de máquina no coincide y el gate **se salta** a propósito
+(`62384a9`). No lo "arregles" subiendo la tolerancia: es hardware, no código.
+
 
 
 ## 5. Qué hacer (ordenado por impacto) — HISTÓRICO, TODO CERRADO
