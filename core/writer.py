@@ -8,6 +8,7 @@ the target format requires (Parquet batches, the Excel workbook).
 from __future__ import annotations
 
 import csv
+import datetime
 import decimal
 import json
 import re
@@ -36,6 +37,18 @@ def _sql_quote_ident(name: str) -> str:
     if not SQL_IDENT_RE.fullmatch(name):
         raise ValueError(f"invalid SQL identifier: {name!r}")
     return f'"{name}"'
+
+
+def _iso_to_date(value: str):
+    """ISO `YYYY-MM-DD` -> `datetime.date`, or the value unchanged.
+
+    A masked or otherwise non-ISO string stays a string rather than raising:
+    redaction must not turn into a hard failure.
+    """
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return value
 
 
 def _sql_value(value: object) -> str:
@@ -151,18 +164,57 @@ class ParquetWriter:
 
 
 class ExcelWriter:
-    """Write-only workbook: bounded memory for large exports."""
+    """Write-only workbook: bounded memory for large exports.
 
-    def __init__(self, schema: Schema, path: str):
+    Cells carry native Excel types. A date arrives as `datetime.date` and a
+    financial amount as a number, so the recipient can sort, sum and pivot
+    without retyping the column. Writing them as text would look fine in a
+    screenshot and break every formula in the workbook.
+
+    `excel_float_decimals` is the one honest compromise: Excel has a single
+    numeric type, so exact `decimal.Decimal` amounts are written as the
+    closest float. Set it to 0 for a faithful representation at the cost of
+    arithmetic. The Parquet writer is the one that keeps `decimal128` exact.
+    """
+
+    DEFAULT_FLOAT_DECIMALS = 2
+
+    def __init__(
+        self,
+        schema: Schema,
+        path: str,
+        float_decimals: int | None = None,
+    ):
         from openpyxl import Workbook
 
         self._path = path
+        self._float_decimals = (
+            float_decimals
+            if float_decimals is not None
+            else self.DEFAULT_FLOAT_DECIMALS
+        )
+        if self._float_decimals < 0:
+            raise ValueError("excel_float_decimals must be >= 0")
         self._wb = Workbook(write_only=True)
         self._ws = self._wb.create_sheet()
         self._ws.append([f.name for f in schema.fields])
+        self._field_types = {f.name: f.type for f in schema.fields}
+
+    def _cell(self, name: str, value: object) -> object:
+        if value is None:
+            # a blank cell, not the string "None" or an empty string
+            return None
+        ftype = self._field_types.get(name)
+        if ftype in ("decimal", "packed"):
+            if isinstance(value, (decimal.Decimal, int, float)):
+                return round(float(value), self._float_decimals)
+            return value
+        if ftype == "date" and isinstance(value, str):
+            return _iso_to_date(value)
+        return value
 
     def write(self, result: RecordResult) -> None:
-        self._ws.append([fv.value for fv in result.fields])
+        self._ws.append([self._cell(fv.name, fv.value) for fv in result.fields])
 
     def finish(self) -> None:
         self._wb.save(self._path)
@@ -284,6 +336,7 @@ def make_writer(
     state_path: str | None = None,
     state_every: int | None = None,
     emit_schema: bool = True,
+    float_decimals: int | None = None,
 ) -> Writer:
     if fmt == "json":
         return JsonWriter(schema, cast(TextIO, out))
@@ -296,7 +349,7 @@ def make_writer(
     if fmt == "parquet":
         return ParquetWriter(schema, cast(str, out))
     if fmt == "excel":
-        return ExcelWriter(schema, cast(str, out))
+        return ExcelWriter(schema, cast(str, out), float_decimals=float_decimals)
     if fmt == "singer":
         return SingerWriter(
             schema,

@@ -130,6 +130,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --key, cap distinct keys tracked; fail instead of exceeding",
     )
     ap.add_argument(
+        "--excel-float-decimals",
+        type=int,
+        help=(
+            "excel only: decimals kept when writing a numeric amount "
+            f"(default {writer.ExcelWriter.DEFAULT_FLOAT_DECIMALS}, "
+            "0 = faithful but exact). Parquet keeps decimal128 exactly."
+        ),
+    )
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="validate only, produce no output; print error report",
@@ -389,7 +398,12 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     else:
         out_fh = nullcontext(sys.stdout)
         try:
-            out = writer.make_writer(args.format, sch, args.output)
+            out = writer.make_writer(
+                args.format,
+                sch,
+                args.output,
+                float_decimals=args.excel_float_decimals,
+            )
         except (OSError, ValueError) as exc:
             stack.close()
             print(f"output error: {exc}", file=sys.stderr)
