@@ -123,8 +123,10 @@ class TestWriters(unittest.TestCase):
             ws = wb.active
             rows = list(ws.iter_rows(values_only=True))
             self.assertEqual(rows[0][0], "id")
-            # dates and amounts land as native cells, not text
-            self.assertEqual(rows[1][2], datetime.date(2025, 1, 15))
+            # dates and amounts land as native cells, not text.
+            # Excel has no date-only type, so a date cell reads back as a
+            # datetime at midnight; what matters is that it is a date at all.
+            self.assertEqual(rows[1][2], datetime.datetime(2025, 1, 15, 0, 0))
             self.assertEqual(float(rows[1][3]), 123.45)
 
 
