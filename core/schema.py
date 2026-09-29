@@ -169,11 +169,14 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
         scale = raw.get("scale", 0)
         if not isinstance(scale, int) or scale < 0:
             errors.append(f"fields[{i}] '{name}': scale must be int >= 0")
-        if ftype == "date" and raw.get("format") is None:
-            errors.append(f"fields[{i}] '{name}': type date requires 'format'")
-        if ftype == "date" and raw.get("format") is not None:
-            if raw.get("format") not in SUPPORTED_DATE_FORMATS:
-                errors.append(f"fields[{i}] '{name}': unsupported date format {raw.get('format')!r}")
+        if ftype == "date":
+            date_format = raw.get("format")
+            if date_format is None:
+                errors.append(f"fields[{i}] '{name}': type date requires 'format'")
+            elif date_format not in SUPPORTED_DATE_FORMATS:
+                errors.append(
+                    f"fields[{i}] '{name}': unsupported date format {date_format!r}"
+                )
 
         if is_delimited:
             if "start" in raw or "length" in raw:

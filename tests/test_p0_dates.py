@@ -22,13 +22,17 @@ class TestConvertDateValid(unittest.TestCase):
         self.assertEqual(converters.convert_date("20250115", "YYYYMMDD"), "2025-01-15")
 
     def test_yyyy_mm_dd(self):
-        self.assertEqual(converters.convert_date("2025-01-15", "YYYY-MM-DD"), "2025-01-15")
+        self.assertEqual(
+            converters.convert_date("2025-01-15", "YYYY-MM-DD"), "2025-01-15"
+        )
 
     def test_ddmmyyyy(self):
         self.assertEqual(converters.convert_date("15012025", "DDMMYYYY"), "2025-01-15")
 
     def test_dd_slash_mm_slash_yyyy(self):
-        self.assertEqual(converters.convert_date("15/01/2025", "DD/MM/YYYY"), "2025-01-15")
+        self.assertEqual(
+            converters.convert_date("15/01/2025", "DD/MM/YYYY"), "2025-01-15"
+        )
 
     def test_yymmdd(self):
         self.assertEqual(converters.convert_date("250115", "YYMMDD"), "2025-01-15")
@@ -100,7 +104,13 @@ class TestSchemaDateGate(unittest.TestCase):
             "version": "1.0.0",
             "record_length": 10,
             "fields": [
-                {"name": "d", "start": 0, "length": 10, "type": "date", "format": "MM-DD-YYYY"},
+                {
+                    "name": "d",
+                    "start": 0,
+                    "length": 10,
+                    "type": "date",
+                    "format": "MM-DD-YYYY",
+                },
             ],
         }
         with self.assertRaises(schema_mod.SchemaError) as ctx:

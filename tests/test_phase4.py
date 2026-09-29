@@ -188,7 +188,7 @@ class TestSparkMock(unittest.TestCase):
 
             def collect(self):
                 names = [f.name for f in self.schema.fields]
-                return [dict(zip(names, row)) for row in self._data]
+                return [dict(zip(names, row, strict=True)) for row in self._data]
 
         class FakeSparkSession:
             builder = None  # patched below

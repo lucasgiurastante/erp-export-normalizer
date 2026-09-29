@@ -15,9 +15,8 @@ import tempfile
 import unittest
 
 from cli import build_parser, main
-from core import parallel, parser
+from core import parallel, parser, validator
 from core import schema as schema_mod
-from core import validator
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "core", "formats", "jde_ar.yaml")
@@ -31,18 +30,20 @@ FIXTURE_PATH = next(p for p in _FIXTURE_CANDIDATES if os.path.exists(p))
 
 class TestChunkLinesFlag(unittest.TestCase):
     def test_default_is_chunk_lines_constant(self):
-        args = build_parser().parse_args(
-            ["--input", "in.txt", "--output", "out.json"]
-        )
+        args = build_parser().parse_args(["--input", "in.txt", "--output", "out.json"])
         self.assertEqual(args.chunk_lines, parallel.CHUNK_LINES)
 
     def test_custom_value_parses(self):
         args = build_parser().parse_args(
             [
-                "--input", "in.txt",
-                "--output", "out.json",
-                "--workers", "2",
-                "--chunk-lines", "10000",
+                "--input",
+                "in.txt",
+                "--output",
+                "out.json",
+                "--workers",
+                "2",
+                "--chunk-lines",
+                "10000",
             ]
         )
         self.assertEqual(args.chunk_lines, 10_000)
@@ -50,7 +51,9 @@ class TestChunkLinesFlag(unittest.TestCase):
 
 
 class TestParallelOrder(unittest.TestCase):
-    def _records(self, n: int = 200) -> tuple[schema_mod.Schema, list[tuple[int, bytes]]]:
+    def _records(
+        self, n: int = 200
+    ) -> tuple[schema_mod.Schema, list[tuple[int, bytes]]]:
         sch = schema_mod.load_schema(SCHEMA_PATH)
         with open(FIXTURE_PATH, "rb") as fh:
             seed = fh.read().splitlines()
@@ -63,7 +66,7 @@ class TestParallelOrder(unittest.TestCase):
         expected = [serial.validate_record(n, raw) for n, raw in items]
         got = list(parallel.validate_parallel(iter(items), sch, 2, chunk_lines=7))
         self.assertEqual(len(got), len(expected))
-        for exp, res in zip(expected, got):
+        for exp, res in zip(expected, got, strict=True):
             self.assertEqual(res.line, exp.line)
             self.assertEqual(res.ok, exp.ok)
             self.assertEqual(
@@ -85,21 +88,31 @@ class TestParallelOrder(unittest.TestCase):
             out_parallel = os.path.join(tmp, "parallel.json")
             code = main(
                 [
-                    "--schema", SCHEMA_PATH,
-                    "--input", input_path,
-                    "--output", out_serial,
-                    "--format", "json",
+                    "--schema",
+                    SCHEMA_PATH,
+                    "--input",
+                    input_path,
+                    "--output",
+                    out_serial,
+                    "--format",
+                    "json",
                 ]
             )
             self.assertEqual(code, 0)
             code = main(
                 [
-                    "--schema", SCHEMA_PATH,
-                    "--input", input_path,
-                    "--output", out_parallel,
-                    "--format", "json",
-                    "--workers", "2",
-                    "--chunk-lines", "7",
+                    "--schema",
+                    SCHEMA_PATH,
+                    "--input",
+                    input_path,
+                    "--output",
+                    out_parallel,
+                    "--format",
+                    "json",
+                    "--workers",
+                    "2",
+                    "--chunk-lines",
+                    "7",
                 ]
             )
             self.assertEqual(code, 0)

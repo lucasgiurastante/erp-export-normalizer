@@ -33,7 +33,9 @@ class RuleEngine:
                     raise ValueError(f"rules[{i}]: 'sum' requires 'field'+'expected'")
             elif rtype == "balance":
                 if "positive" not in spec or "negative" not in spec:
-                    raise ValueError(f"rules[{i}]: 'balance' requires 'positive'+'negative'")
+                    raise ValueError(
+                        f"rules[{i}]: 'balance' requires 'positive'+'negative'"
+                    )
             else:
                 raise ValueError(f"rules[{i}]: unsupported type {rtype!r}")
         self._rules = rules or ()
@@ -56,10 +58,14 @@ class RuleEngine:
         elif isinstance(value, int):
             acc[field] = acc.get(field, decimal.Decimal(0)) + decimal.Decimal(value)
         elif isinstance(value, float):
-            acc[field] = acc.get(field, decimal.Decimal(0)) + decimal.Decimal(str(value))
+            acc[field] = acc.get(field, decimal.Decimal(0)) + decimal.Decimal(
+                str(value)
+            )
         else:
             self._field_errors.append(
-                RuleViolation(spec, f"rule '{spec['type']}:{field}': non-numeric {value!r}")
+                RuleViolation(
+                    spec, f"rule '{spec['type']}:{field}': non-numeric {value!r}"
+                )
             )
 
     def finalize(self) -> list[RuleViolation]:

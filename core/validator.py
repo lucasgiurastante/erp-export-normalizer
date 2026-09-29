@@ -86,10 +86,7 @@ class Validator:
             or len(record) == self.schema.record_length
         )
         if not length_ok:
-            msg = (
-                f"length {len(record)} != "
-                f"record_length {self.schema.record_length}"
-            )
+            msg = f"length {len(record)} != record_length {self.schema.record_length}"
             errors.append(msg)
             line_raw = record.decode(
                 converters.codec_for(self.schema.codepage), errors="replace"
@@ -165,9 +162,7 @@ class Validator:
                 f"schema expects {len(self.schema.fields)}"
             )
             errors.append(msg)
-            details.append(
-                {"field": None, "message": msg, "raw": _truncate_raw(text)}
-            )
+            details.append({"field": None, "message": msg, "raw": _truncate_raw(text)})
         return RecordResult(
             line=line, ok=not errors, errors=errors, fields=fields, details=details
         )

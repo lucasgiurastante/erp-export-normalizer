@@ -16,8 +16,8 @@ import tempfile
 import unittest
 
 from cli import main
-from core import validator as validator_mod
 from core import schema as schema_mod
+from core import validator as validator_mod
 
 DELIMITED_SCHEMA = {
     "format": "delimited",

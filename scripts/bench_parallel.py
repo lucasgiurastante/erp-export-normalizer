@@ -8,7 +8,8 @@ Prints wall time + md5 per config; all md5 must be identical
 Outputs go to /tmp (never committed). Example:
 
     ./.venv/bin/python scripts/bench_parallel.py
-    ./.venv/bin/python scripts/bench_parallel.py --lines 50000 --workers 1 2 --chunks 10000 100000
+    ./.venv/bin/python scripts/bench_parallel.py --lines 50000 \\
+        --workers 1 2 --chunks 10000 100000
 """
 
 from __future__ import annotations
@@ -59,18 +60,26 @@ def _run_once(input_path: str, workers: int, chunk_lines: int) -> tuple[float, s
     )
     os.close(fd)
     argv = [
-        "--schema", SCHEMA_PATH,
-        "--input", input_path,
-        "--output", out_path,
-        "--format", "json",
-        "--workers", str(workers),
-        "--chunk-lines", str(chunk_lines),
+        "--schema",
+        SCHEMA_PATH,
+        "--input",
+        input_path,
+        "--output",
+        out_path,
+        "--format",
+        "json",
+        "--workers",
+        str(workers),
+        "--chunk-lines",
+        str(chunk_lines),
     ]
     start = time.perf_counter()
     code = main(argv)
     elapsed = time.perf_counter() - start
     if code != 0:
-        raise RuntimeError(f"conversion failed (exit {code}): workers={workers} chunk={chunk_lines}")
+        raise RuntimeError(
+            f"conversion failed (exit {code}): workers={workers} chunk={chunk_lines}"
+        )
     digest = _md5(out_path)
     os.unlink(out_path)
     return elapsed, digest

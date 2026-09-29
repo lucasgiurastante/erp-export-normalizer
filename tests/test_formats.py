@@ -3,6 +3,8 @@ record and the detector picks the correct schema for its own fixture."""
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -205,8 +207,8 @@ class TestLibraryDetector(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-import contextlib
-import io
+
+
 class TestDetectorCollision(unittest.TestCase):
     def test_detect_collision_same_length_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -239,8 +241,6 @@ class TestDetectorCollision(unittest.TestCase):
                 found = detector_mod.Detector(formats_dir).detect(in_path)
             self.assertIsNone(found)
             self.assertIn("ambiguous match, pass --schema", err.getvalue())
-
-
 
 
 # P1-2 new library schemas (append-only; existing 11 tests + collision untouched).
