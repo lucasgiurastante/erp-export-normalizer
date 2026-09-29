@@ -53,6 +53,18 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   baseline, plus an absolute determinism check across worker configurations.
 - **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
   hashes, schema version, counts, timestamp).
+- **Duplicate key detection** — `--key id` fails a run that repeats a primary
+  key, reporting the line and the first sighting.
+- **Per-field text normalization** — `trim`, `case` and unicode `normalize`
+  (NFC/NFD/NFKC/NFKD) per field, for legacy exports that spell the same
+  value several ways.
+- **PII masking** — `mask: full | partial | hash` per field, so a fixture can
+  be shared without leaking it. Masked values are always strings.
+- **Versioned schema registry** — `registry search` / `registry verify`
+  against a local index with checksums. See
+  [docs/RFC_REGISTRY.md](docs/RFC_REGISTRY.md).
+- **Postgres destination** — `--postgres-dsn` loads records straight into a
+  table in input order, `numeric` for amounts, with a load report.
 
 ## Try it now
 
@@ -153,10 +165,42 @@ erp-normalize --schema core/formats/jde_ar.yaml --input huge.txt \
 
 # validate the schema library
 erp-normalize registry core/formats/
+# ...or check a versioned index: checksums + schema validity
+erp-normalize registry verify registry.yaml
+erp-normalize registry search registry.yaml cobol
+
+# fail the run if a primary key repeats (line + first sighting reported)
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt \
+  --output out.json --key id
+
+# load straight into Postgres, streaming, amounts as numeric
+pip install 'erp-export-normalizer[postgres]'
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt \
+  --postgres-dsn postgresql://user@host/db --batch-size 500
 
 # zero-dependency web UI (generate schemas without touching YAML)
 erp-normalize serve --port 8000
+#   /         schema generation + conversion preview
+#   /validate per-line error table with the offending raw value
 ```
+
+### Normalizing and masking, per field
+
+Legacy exports spell the same value several ways, and some fields cannot be
+handed out as they are. Both are explicit, per field, and validated when the
+schema loads:
+
+```yaml
+fields:
+  - {name: customer, start: 0,  length: 20, trim: true, case: upper}
+  - {name: cuit,     start: 20, length: 11, mask: partial, mask_keep: 3}
+  - {name: doc,      start: 31, length: 12, mask: hash}
+```
+
+`normalize: NFKC` folds full-width characters and composed accents. `case`
+and `normalize` only apply to `string` fields — applying them to a decimal
+would silently reorder what the schema says. A masked value is always
+written as a string, so the audit trail cannot imply a number survived.
 
 ### Importing a COBOL copybook
 

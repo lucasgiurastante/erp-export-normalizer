@@ -283,7 +283,12 @@ class PostgresWriter:
 
 
 def connect_postgres(dsn: str, **kwargs):
-    """Open a psycopg connection. The driver is an optional extra."""
+    """Open a psycopg connection. The driver is an optional extra.
+
+    A refused or unreachable server is a normal operational event, not a
+    bug: it comes back as a `ConnectorError` with a message, not a driver
+    traceback on the user's terminal.
+    """
     try:
         import psycopg  # noqa: PLC0415 - optional dependency
     except ImportError as exc:
@@ -291,4 +296,10 @@ def connect_postgres(dsn: str, **kwargs):
             "postgres output needs psycopg: "
             "pip install 'erp-export-normalizer[postgres]'"
         ) from exc
-    return psycopg.connect(dsn, **kwargs)
+    try:
+        return psycopg.connect(dsn, **kwargs)
+    except Exception as exc:
+        raise ConnectorError(
+            f"cannot connect to Postgres: {exc}. Check the DSN, the network "
+            "and that the server is reachable."
+        ) from exc
