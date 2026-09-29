@@ -51,12 +51,19 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 | `core/audit.py`     | SHA-256 + resumen de conversión (sidecar)              |
 | `core/webui.py`     | Web UI zero-dependency (schema generation + preview)   |
 
-## Estado actual (agosto 2026)
+## Estado actual (2026-09-29)
 
-- **8 commits**, HEAD `ed1143c` ("feat: expand built-in schema library to 6 formats + CI badge").
-- **66 tests OK** (1 skip — spark sin JVM local), ruff limpio, mypy limpio.
-- Tag + release `v0.1.0`; CI verde en GitHub (incluye los últimos pushes).
-- Git sync con GitHub (lucasgiurastante/erp-export-normalizer), working tree limpio.
+- **Rama `main`**, working tree limpio, sincronizado con GitHub
+  (lucasgiurastante/erp-export-normalizer).
+- **113 tests OK** (1 skip — pyspark sin JVM), ruff limpio, mypy limpio.
+- P0-1..P0-5 + P1-1 + P1-2 + P1-3 completados (ver tabla abajo).
+- Añadido **Plugin API v1 congelada** (`docs/PLUGIN_API_v1.md`) con 4 tests de
+  contrato (`tests/test_plugin_api.py`).
+- Lint repo saneado: `ruff check` + `ruff format` limpios en los 9 ficheros
+  que los commits anteriores dejaron sin formatear (`core/rules.py`,
+  `core/schema.py`, `core/validator.py`, `scripts/bench_parallel.py`, tests).
+  La regla `SIM102` de `core/schema.py` se resolvió fusionando la validación
+  de `type: date` en un solo `if`/`elif`.
 
 ### Fases
 
@@ -68,22 +75,47 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 | 3 | Rules, audit sidecars, registry, web UI | ✅ |
 | 4 | Singer tap + Spark backend | ✅ parcial — falta SaaS y marketplace |
 
+### Plan P0/P1 (instructivo 2026-09-28) — cerrado
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| P0-1 `JsonWriter` streaming (memoria O(1)) | ✅ | `a29334e` |
+| P0-2 4 formatos de fecha extra (`YYYY-MM-DD`, `DDMMYYYY`, `DD/MM/YYYY`, `YYMMDD`) | ✅ | `cc8ba37` |
+| P0-3 detector: muestra 20, scoring parcial, `None` en ambigüedad | ✅ | `3b8056f` |
+| P0-4 rules: no-numéricos como violación + validación de spec en `__init__` | ✅ | `1a12c66` |
+| P0-5 flag `--chunk-lines` + `scripts/bench_parallel.py` | ✅ | `76a9bf7` |
+| P1-1 test Spark sin JVM (mock `SparkSession`) | ✅ | `3205589` |
+| P1-2 schemas `sap_fi_bseg` + `jde_gl_distinct` | ✅ | `6f559e5` |
+| P1-3 errores con `field` + `raw` truncado a 50 chars | ✅ | `f866fb1` |
+| Plugin API v1 congelada + tests de contrato | ✅ | este commit |
+
+
 ### Gaps detectados (análisis 2026-08-20)
 
 1. ~~**.DS_Store commiteado**~~ ✅ resuelto — fuera del índice, `.gitignore` cubre.
 2. ~~**Sin tags/releases**~~ ✅ resuelto — tag + release `v0.1.0` creados con release notes.
 3. ~~**About de GitHub vacío**~~ ✅ resuelto — description + 8 topics (erp, jdedwards, sap, etl, flat-file, mainframe, fixed-width, python).
 4. ~~**Sin CI badge**~~ ✅ resuelto — badge del workflow en README (activo tras push post-fix).
-5. ~~**Biblioteca formats/ pobre**~~ ✅ resuelto — 6 schemas (jde_ar/ap/gl, sap_batch/fi_document, cobol_fixed) + tests de detector por fixture.
+5. ~~**Biblioteca formats/ pobre**~~ ✅ resuelto — 8 schemas (jde_ar/ap/gl,
+   jde_gl_distinct, sap_batch, sap_fi_document, sap_fi_bseg, cobol_fixed) +
+   tests de detector por fixture.
 6. ~~**plugins/**~~ ✅ resuelto — sistema de plugins operativo (`core/plugins.py`):
    `discover`/`load_reader`, schema opcional `parser:`, `--plugins-dir`, con el
-   plugin de ejemplo `plugins/length_prefixed_frame.py` (frames binarios) y 6 tests.
-7. **io.py spark backend sin test local** — el skip del suite es ese (requiere JVM).
+   plugin de ejemplo `core/plugin_examples/length_prefixed_frame.py` (frames
+   binarios), contrato congelado en `docs/PLUGIN_API_v1.md` y 10 tests
+   (`tests/test_plugins.py` + `tests/test_plugin_api.py`).
+7. ~~**io.py spark backend sin test local**~~ ✅ resuelto — `tests/test_phase4.py`
+   mockea `SparkSession` (`createDataFrame().collect()`) y testea el mapeo de
+   tipos sin JVM. El skip restante del suite es otro (pyspark no instalado).
 8. ~~**Sin presencia en PyPI**~~ ✅ resuelto — `erp-export-normalizer` 0.1.0 publicado
    (https://pypi.org/project/erp-export-normalizer/). Wheel autocontenida: schemas
    y plugin ejemplo dentro del paquete (`core/formats/`, `core/plugin_examples/`).
    Verificado: `pip install erp-export-normalizer` + auto-detección/COBOL/plugin OK.
    `examples/` con fixtures JDE/SAP/COBOL/binario + comandos copy-paste.
+9. ~~**Lint roto en los commits P0/P1**~~ ✅ resuelto (2026-09-29) — 9 ficheros
+   sin `ruff format` ni `E501`/`SIM102`/`B905` limpios. CI habría fallado en
+   `lint`. Ahora `ruff check` + `ruff format --check` verdes.
+
 
 ### Fix lateral detectado y resuelto
 
@@ -92,36 +124,31 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
   validator/generator; el schema `cobol_fixed.yaml` lo usa y es el primer caso
   EBCDIC real de la biblioteca.
 
-## Pasos a seguir (orden propuesto)
+## Pasos a seguir (siguiente ronda, 2026-09-29)
 
-### 1. Higiene repo (rápido, urgente)
-```bash
-git rm --cached .DS_Store
-# añadir ".DS_Store" a .gitignore
-git add .gitignore && git commit -m "chore: remove .DS_Store, ignore macOS junk"
-git push
-```
+El plan P0/P1 del instructivo 2026-09-28 está cerrado (tabla arriba).
+Pendientes reales, por valor:
 
-### 2. Visibilidad GitHub
-- Añadir description: "Schema-driven streaming converter for legacy ERP flat files (JD Edwards, SAP) to JSON/CSV/Parquet — air-gapped, deterministic, auditable."
-- Topics: `erp`, `jdedwards`, `sap`, `etl`, `flat-file`, `mainframe`, `fixed-width`, `python`.
-- Tag `v0.1.0` + release notes en GitHub.
+### 1. Publicar `v0.2.0`
+- Tag + release notes con: `JsonWriter` streaming, 4 formatos de fecha,
+  detector con desempate ambiguo, rules sin silencios, `--chunk-lines`,
+  `sap_fi_bseg` + `jde_gl_distinct`, Plugin API v1.
+- Bump de `version` en `pyproject.toml` + republicar wheel en PyPI.
 
-### 3. CI badge en README
-- Badge de estado del workflow (GitHub Actions) tras el primer push post-fix.
+### 2. Solicitud de OSS de Anthropic
+- META activa: `https://claude.com/contact-sales/claude-for-oss`.
+- Pendiente de reply del usuario con los datos de la solicitud.
 
-### 4. Biblioteca formats/
-- Añadir 3-4 schemas reales con fixtures de test: SAP FI (BKPF/BSEG), JDE AP, JDE GL, COBOL COPYBOOK simple.
-- Cada schema = fixture + test de detector. Esto multiplica el valor del autodetect.
+### 3. COBOL COMP-3
+- `core/formats/` tiene `cobol_fixed` EBCDIC pero no packed decimal.
+- Requiere un reader binario → candidato natural a plugin con el contrato v1
+  ya congelado. Solo con demanda real de cliente.
 
-### 5. Tests spark backend
-- Quitar el skip en `tests/test_phase4.py` (mock de SparkSession si no hay JVM local).
+### 4. Fases futuras
+- Batch de schemas por cliente (recomendación: 1 repo por cliente, schema
+  compartido = parseo idéntico).
+- Sin SaaS hosted ni marketplace (fuera de alcance, ver §9 del instructivo).
 
-### 6. plugins/ hooks (fase futura)
-- API de parser custom para formatos binarios raros. Solo cuando haya demanda real.
-
-### 7. Fuera de alcance CLI
-- SaaS hosted, marketplace de schemas, registry comunitario centralizado.
 
 ## Loop de desarrollo
 

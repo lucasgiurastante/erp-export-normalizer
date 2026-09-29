@@ -49,19 +49,56 @@ Exit codes `cli.py:40-43`: 0 ok / 1 runtime / 2 schema inválido / 3 errores val
 | `core/io.py:21 read_erp()` | API lib Pandas/Polars/Spark | |
 | `core/plugins.py:30 load_reader` | readers binarios custom | ejemplo `core/plugin_examples/length_prefixed_frame.py` |
 | `core/formats/` | 6 YAML built-in: jde_ar/ap/gl, sap_batch, sap_fi_document, cobol_fixed | |
-| `tests/` | 7 files: test_mvp/phase1-4/plugins/formats | 66 OK, 1 skip spark sin JVM |
+| `tests/` | 13 files: mvp/phase1-4/plugins/formats/p0_*/p1_*/plugin_api | 113 OK, 1 skip pyspark |
+| `docs/PLUGIN_API_v1.md` | contrato congelado del plugin `Reader` v1 (§4b) |
 | `examples/` | fixtures + README copy-paste | úsalo como fixtures |
 | `docs/CONTEXTO.md`, `ARCHITECTURE.md`, `docs/TECHNICAL_DESIGN.md` | estado y diseño | lee CONTEXTO antes de planificar |
 
 Docs fuente verdad: `README.md:5-40` propósito, `README.md:75-137` install/run, `README.md:268-278` test/lint.
 
-## 4. Estado actual (2026-09-28)
+## 4. Estado actual (2026-09-29)
 
 - META: aplicar beca `https://claude.com/contact-sales/claude-for-oss`.
 - Tablero: `https://trello.com/b/c1hooM8i/erp-export-normalizer-seguimiento`.
-- Estado 2026-09-28 noche: P0-1..P0-5 + P1-1 + P1-3 + P1-2 ✅ código + tests, 9 commits locales por lane. Suite 109 OK (1 skip pre-existente spark sin JVM en test_phase2). Pendiente push.
+- **P0-1..P0-5 + P1-1 + P1-2 + P1-3 ✅ cerrados** (ver tabla en `docs/CONTEXTO.md`).
+  Plugin API v1 congelada en `docs/PLUGIN_API_v1.md` + 4 tests de contrato.
+- Suite: **113 tests OK** (1 skip pyspark sin JVM), ruff limpio, mypy limpio,
+  `main` sincronizada con `origin/main`.
+- Pendiente: tag + release `v0.2.0`.
 
-## 5. Qué hacer (ordenado por impacto)
+## 4b. Colas cerradas (2026-09-28/29) — no rehacer
+
+Las tareas de §5 están **todas implementadas**. Detalle y commits:
+
+| Tarea | Commit | Nota |
+|---|---|---|
+| P0-1 `JsonWriter` streaming | `a29334e` | `core/writer.py` escribe incremental, O(1) |
+| P0-2 formatos fecha | `cc8ba37` | + `YYYY-MM-DD`, `DDMMYYYY`, `DD/MM/YYYY`, `YYMMDD` |
+| P0-3 detector | `3b8056f` | muestra 20, scoring parcial, `None` si ambiguo |
+| P0-4 rules | `1a12c66` | no-numérico = violación, spec validada en `__init__` |
+| P0-5 `--chunk-lines` | `76a9bf7` | + `scripts/bench_parallel.py` |
+| P1-1 Spark sin JVM | `3205589` | mock de `SparkSession` |
+| P1-2 schemas | `6f559e5` | `sap_fi_bseg`, `jde_gl_distinct` |
+| P1-3 errores UX | `f866fb1` | `field` + `raw` truncado a 50 chars |
+
+**Antes de tocar código, lee esta tabla y `git log`.** Si buscas trabajo nuevo,
+las candidatas priorizadas están en `docs/CONTEXTO.md` §"Pasos a seguir".
+
+## 4c. Trampa conocida
+
+`ruff format` **no** está en `pyproject.toml` como `exclude`; formatea también
+los bloques `python` de los `.md`. Si `ruff format .` toca `docs/*.md` es
+esperado. Ejecuta `ruff format .` y `ruff check --fix .` **antes** de commitear:
+los commits P0/P1 dejaron 9 ficheros sin formatear y el job `lint` de CI
+habría fallado.
+
+
+## 5. Qué hacer (ordenado por impacto) — HISTÓRICO, TODO CERRADO
+
+> Las 8 tareas de esta sección se implementaron el 2026-09-28/29. Se conservan
+> como referencia de *cómo* se hizo y de los criterios de aceptación. **No las
+> repitas**: ver la tabla de commits en §4b. Para trabajo nuevo, lee
+> `docs/CONTEXTO.md` §"Pasos a seguir".
 
 ### P0-1 writer JSON rompe streaming — `core/writer.py:49-59`
 Problema: `JsonWriter._rows: list[dict]` acumula todo en RAM. Promesa streaming rota en JSON grande. Resto de writers sí streamean (CSV/NDJSON/SQL por línea, Parquet batch 1000, Excel write-only).
