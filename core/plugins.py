@@ -76,7 +76,13 @@ def _instantiate(plugin: Plugin, schema: Schema, path: str):
     reader_cls = getattr(module, "Reader", None)
     if reader_cls is None:
         raise PluginError(f"plugin '{plugin.name}': missing 'Reader' class")
-    return reader_cls(schema, path)
+    try:
+        return reader_cls(schema, path)
+    except TypeError as exc:
+        raise PluginError(
+            f"plugin '{plugin.name}': incompatible Reader constructor "
+            f"signature, must accept (schema, path) positionally: {exc}"
+        ) from exc
 
 
 def iter_records(reader) -> Iterator[tuple[int, bytes]]:
