@@ -66,6 +66,18 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(len(verdicts), 3)
 
 
+class TestMachineSignature(unittest.TestCase):
+    def test_signature_uses_python_and_platform(self):
+        a = perf_profile.machine_signature({"python": "3.12.0", "platform": "linux"})
+        b = perf_profile.machine_signature({"python": "3.12.0", "platform": "linux"})
+        c = perf_profile.machine_signature({"python": "3.12.0", "platform": "darwin"})
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, c)
+
+    def test_missing_fields_do_not_crash(self):
+        self.assertTrue(perf_profile.machine_signature({}))
+
+
 class TestEndToEnd(unittest.TestCase):
     """Small real runs: the script must be honest about determinism."""
 
@@ -199,6 +211,85 @@ class TestEndToEnd(unittest.TestCase):
         code, _, err = self._run(["--tolerance", "-1"])
         self.assertEqual(code, 2)
         self.assertIn("tolerance", err)
+
+    def test_baseline_from_another_machine_skips_the_gate(self):
+        """A laptop baseline must not fail a CI build over hardware alone."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = os.path.join(tmp, "base.json")
+            self._run(
+                [
+                    "--lines",
+                    "2000",
+                    "--workers",
+                    "1",
+                    "--chunks",
+                    "1000",
+                    "--update-baseline",
+                    base,
+                ]
+            )
+            with open(base, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data["platform"] = "some-other-machine"
+            for c in data["cases"]:
+                c["seconds"] = 0.001  # absurdly fast, as on different hardware
+            with open(base, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            code, _, err = self._run(
+                [
+                    "--lines",
+                    "2000",
+                    "--workers",
+                    "1",
+                    "--chunks",
+                    "1000",
+                    "--baseline",
+                    base,
+                    "--tolerance",
+                    "0.5",
+                ]
+            )
+            self.assertEqual(code, 0, err)
+            self.assertIn("different machine", err)
+            self.assertIn("SKIPPED", err)
+
+    def test_require_same_machine_turns_the_skip_into_a_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = os.path.join(tmp, "base.json")
+            self._run(
+                [
+                    "--lines",
+                    "2000",
+                    "--workers",
+                    "1",
+                    "--chunks",
+                    "1000",
+                    "--update-baseline",
+                    base,
+                ]
+            )
+            with open(base, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data["platform"] = "some-other-machine"
+            for c in data["cases"]:
+                c["seconds"] = 0.001
+            with open(base, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            code, _, _ = self._run(
+                [
+                    "--lines",
+                    "2000",
+                    "--workers",
+                    "1",
+                    "--chunks",
+                    "1000",
+                    "--baseline",
+                    base,
+                    "--require-same-machine",
+                ]
+            )
+            # the gate now applies and flags the slowdown
+            self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":

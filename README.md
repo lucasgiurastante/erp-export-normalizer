@@ -371,7 +371,10 @@ python scripts/perf_profile.py --lines 100000 --update-baseline perf-baseline.js
 
 The performance gate is deliberately **relative**: shared CI runners are
 noisy, and an absolute wall-clock threshold produces flaky failures nobody
-trusts. The determinism check is **absolute** and never relaxes — every worker
+trusts. A baseline recorded on a different machine is detected and the
+regression verdict is **skipped** rather than failed — the difference would be
+hardware, not code. Pass `--require-same-machine` to make that a hard error.
+The determinism check is **absolute** and never relaxes — every worker
 configuration must produce byte-identical output.
 
 ## Roadmap

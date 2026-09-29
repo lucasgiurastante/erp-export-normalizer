@@ -114,6 +114,17 @@ def _case_key(row: dict) -> str:
     return f"w{row['workers']}c{row['chunk_lines']}"
 
 
+def machine_signature(report: dict) -> str:
+    """Identity of the machine a report was measured on.
+
+    Timings are only comparable between identical environments. A baseline
+    recorded on a laptop and applied to a shared CI runner (or the reverse)
+    reports a "regression" that is pure hardware difference, which is exactly
+    the kind of false alarm that makes a team delete a performance gate.
+    """
+    return f"{report.get('python', '?')}|{report.get('platform', '?')}"
+
+
 def compare(current: list[dict], baseline: list[dict], tolerance: float) -> list[dict]:
     """Return one verdict per case that has a baseline entry."""
     base_by_key = {_case_key(r): r for r in baseline}
@@ -164,6 +175,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--update-baseline",
         metavar="PATH",
         help="write this run as the new baseline file, then exit",
+    )
+    ap.add_argument(
+        "--require-same-machine",
+        action="store_true",
+        help=(
+            "fail when the baseline came from a different Python/platform "
+            "instead of skipping the regression gate"
+        ),
     )
     ap.add_argument(
         "--tolerance",
@@ -257,6 +276,21 @@ def main_perf(argv: list[str] | None = None) -> int:
         return 0
     with open(args.baseline, encoding="utf-8") as fh:
         baseline = json.load(fh)
+
+    # A baseline measured on a different machine cannot gate anything: the
+    # difference is hardware, not code. Report it and move on instead of
+    # failing a build over it.
+    same_machine = machine_signature(baseline) == machine_signature(report)
+    if not same_machine and not args.require_same_machine:
+        print(
+            f"\nbaseline was measured on a different machine:\n"
+            f"  baseline: {machine_signature(baseline)}\n"
+            f"  this run: {machine_signature(report)}\n"
+            f"regression gate SKIPPED (timings still reported, md5 identical)",
+            file=sys.stderr,
+        )
+        return 0
+
     verdicts = compare(results, baseline.get("cases", []), args.tolerance)
     print()
     for v in verdicts:

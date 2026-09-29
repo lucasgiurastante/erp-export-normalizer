@@ -6,7 +6,7 @@
     {
       "workers": 1,
       "chunk_lines": 10000,
-      "seconds": 2.1414,
+      "seconds": 2.0491,
       "rows": 100000,
       "bytes": 10733338,
       "md5": "1003ab060824f1618d1820ce0d19b440"
@@ -14,7 +14,7 @@
     {
       "workers": 2,
       "chunk_lines": 10000,
-      "seconds": 3.0767,
+      "seconds": 3.4461,
       "rows": 100000,
       "bytes": 10733338,
       "md5": "1003ab060824f1618d1820ce0d19b440"
@@ -22,7 +22,7 @@
     {
       "workers": 2,
       "chunk_lines": 100000,
-      "seconds": 4.8438,
+      "seconds": 4.8089,
       "rows": 100000,
       "bytes": 10733338,
       "md5": "1003ab060824f1618d1820ce0d19b440"
@@ -30,7 +30,7 @@
     {
       "workers": 4,
       "chunk_lines": 10000,
-      "seconds": 3.2647,
+      "seconds": 2.8875,
       "rows": 100000,
       "bytes": 10733338,
       "md5": "1003ab060824f1618d1820ce0d19b440"
@@ -38,7 +38,7 @@
     {
       "workers": 4,
       "chunk_lines": 100000,
-      "seconds": 4.8342,
+      "seconds": 4.8852,
       "rows": 100000,
       "bytes": 10733338,
       "md5": "1003ab060824f1618d1820ce0d19b440"
@@ -49,7 +49,7 @@
     "1003ab060824f1618d1820ce0d19b440"
   ],
   "speedup_vs_serial": {
-    "w2": 0.44,
-    "w4": 0.44
+    "w2": 0.43,
+    "w4": 0.42
   }
 }
