@@ -135,11 +135,11 @@ class TestExcelNativeTypes(unittest.TestCase):
         self.assertEqual(cell.value, 1.2346)
 
     def test_negative_float_decimals_rejected(self):
-        from openpyxl import Workbook  # noqa: F401  (ensure the dep is present)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(ValueError):
-                ExcelWriter(SCHEMA_OBJ, os.path.join(tmp, "o.xlsx"), float_decimals=-1)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaises(ValueError),
+        ):
+            ExcelWriter(SCHEMA_OBJ, os.path.join(tmp, "o.xlsx"), float_decimals=-1)
 
     def test_header_row_is_names(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import decimal
 import io
 import json
@@ -122,7 +123,8 @@ class TestWriters(unittest.TestCase):
             ws = wb.active
             rows = list(ws.iter_rows(values_only=True))
             self.assertEqual(rows[0][0], "id")
-            self.assertEqual(rows[1][2], "2025-01-15")
+            # dates and amounts land as native cells, not text
+            self.assertEqual(rows[1][2], datetime.date(2025, 1, 15))
             self.assertEqual(float(rows[1][3]), 123.45)
 
 
