@@ -19,6 +19,9 @@ from typing import Any
 import yaml
 
 SUPPORTED_TYPES = {"string", "date", "decimal", "packed"}
+SUPPORTED_CASES = {"upper", "lower", "title"}
+SUPPORTED_NORMALIZATIONS = {"NFC", "NFD", "NFKC", "NFKD"}
+SUPPORTED_MASKS = {"full", "partial", "hash"}
 SUPPORTED_DATE_FORMATS = {"YYYYMMDD", "YYYY-MM-DD", "DDMMYYYY", "DD/MM/YYYY", "YYMMDD"}
 SUPPORTED_ALIGNS = {"left", "right"}
 SUPPORTED_CODEPAGES = {"utf-8", "cp850", "cp1252", "latin-1", "ebcdic-cp037"}
@@ -40,6 +43,13 @@ class Field:
     scale: int = 0
     align: str = "left"
     codepage: str | None = None
+    # text normalization, applied after decoding and before conversion
+    trim: bool = False
+    case: str | None = None
+    normalize: str | None = None
+    # output masking: never write the raw value
+    mask: str | None = None
+    mask_keep: int = 0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -221,6 +231,42 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
                     f"({start}+{length}>{record_length})"
                 )
 
+        # text normalization and output masking are per-field options
+        case = raw.get("case")
+        if case is not None and case not in SUPPORTED_CASES:
+            errors.append(
+                f"fields[{i}] '{name}': unsupported case {case!r} "
+                f"(use {', '.join(sorted(SUPPORTED_CASES))})"
+            )
+        normalize = raw.get("normalize")
+        if normalize is not None and normalize not in SUPPORTED_NORMALIZATIONS:
+            errors.append(
+                f"fields[{i}] '{name}': unsupported normalize {normalize!r} "
+                f"(use {', '.join(sorted(SUPPORTED_NORMALIZATIONS))})"
+            )
+        if raw.get("trim") is not None and not isinstance(raw.get("trim"), bool):
+            errors.append(f"fields[{i}] '{name}': trim must be a boolean")
+        mask = raw.get("mask")
+        if mask is not None and mask not in SUPPORTED_MASKS:
+            errors.append(
+                f"fields[{i}] '{name}': unsupported mask {mask!r} "
+                f"(use {', '.join(sorted(SUPPORTED_MASKS))})"
+            )
+        mask_keep = raw.get("mask_keep", 0)
+        if (
+            not isinstance(mask_keep, int)
+            or isinstance(mask_keep, bool)
+            or mask_keep < 0
+        ):
+            errors.append(f"fields[{i}] '{name}': mask_keep must be an int >= 0")
+        if ftype != "string" and (case is not None or normalize is not None):
+            # case folding / NFKC only make sense before a numeric parse;
+            # accepting them here would silently reorder what the schema says.
+            errors.append(
+                f"fields[{i}] '{name}': case/normalize only apply to "
+                f"type string, not {ftype}"
+            )
+
         fields.append(
             Field(
                 name=name,
@@ -231,6 +277,11 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
                 scale=scale,
                 align=align,
                 codepage=raw.get("codepage"),
+                trim=raw.get("trim", False),
+                case=raw.get("case"),
+                normalize=raw.get("normalize"),
+                mask=raw.get("mask"),
+                mask_keep=int(raw.get("mask_keep", 0)),
             )
         )
 

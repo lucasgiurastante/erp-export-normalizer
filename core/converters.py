@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import hashlib
+import unicodedata
+from typing import Literal, cast
 
 from .schema import Field
 
@@ -32,7 +35,57 @@ def convert_field(raw: bytes, field: Field, default_codepage: str) -> object:
     if field.type == "packed":
         # packed decimal is binary (BCD), never decoded through a codepage
         return convert_packed(raw, field)
-    return convert_text(decode_field(raw, field, default_codepage), field)
+    text = decode_field(raw, field, default_codepage)
+    text = normalize_text(text, field)
+    if field.mask:
+        return mask_value(text, field)
+    return convert_text(text, field)
+
+
+def normalize_text(text: str, field: Field) -> str:
+    """Per-field text normalization.
+
+    Legacy ERP exports carry the same value spelled several ways: padded,
+    full-width digits, decomposed accents. Options are explicit and per
+    field, so two schemas that must agree still produce identical output
+    only when they say so.
+    """
+    if field.normalize:
+        # the schema validator restricts this to the four NFC/NFD/NFKC/NFKD
+        # forms, which is what unicodedata.normalize accepts
+        form = cast('Literal["NFC", "NFD", "NFKC", "NFKD"]', field.normalize)
+        text = unicodedata.normalize(form, text)
+    if field.trim:
+        # strip() removes NBSP too, which is a common EBCDIC artifact
+        text = text.strip()
+    if field.case == "upper":
+        text = text.upper()
+    elif field.case == "lower":
+        text = text.lower()
+    elif field.case == "title":
+        text = text.title()
+    return text
+
+
+def mask_value(value: str, field: Field) -> str:
+    """Redact a field so fixtures can be shared without leaking data.
+
+    `partial` keeps `mask_keep` leading and trailing characters, which is
+    usually enough to correlate rows without identifying a person. `hash`
+    is deterministic (SHA-256, truncated) so the same input always masks
+    to the same token and joins still work.
+    """
+    mode = field.mask
+    keep = field.mask_keep
+    if mode == "full":
+        return "*" * len(value)
+    if mode == "hash":
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        return f"sha256:{digest[:16]}"
+    # partial
+    if keep <= 0 or keep * 2 >= len(value):
+        return "*" * len(value)
+    return value[:keep] + "*" * (len(value) - keep * 2) + value[-keep:]
 
 
 def convert_text(text: str, field: Field) -> object:
