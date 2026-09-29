@@ -28,6 +28,7 @@ excel = ["openpyxl>=3.1"]
 dataframe = ["pandas>=2", "polars>=1"]
 spark = ["pyspark>=4"]
 lint = ["ruff>=0.9", "mypy>=1.13"]
+postgres = ["psycopg[binary]>=3.2"]
 dev = [
     "build>=1.2",
     "twine>=5.1",
@@ -41,6 +42,7 @@ all = [
     "pandas>=2",
     "polars>=1",
     "pyspark>=4",
+    "psycopg[binary]>=3.2",
     "ruff>=0.9",
     "mypy>=1.13",
 ]

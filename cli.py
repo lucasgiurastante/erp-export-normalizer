@@ -26,6 +26,7 @@ import yaml
 
 from core import (
     audit,
+    connectors,
     copybook,
     crosscheck,
     dedup,
@@ -140,6 +141,28 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default {writer.ExcelWriter.DEFAULT_FLOAT_DECIMALS}, "
             "0 = faithful but exact). Parquet keeps decimal128 exactly."
         ),
+    )
+    ap.add_argument(
+        "--postgres-dsn",
+        help=(
+            "load straight into Postgres instead of writing a file "
+            "(e.g. postgresql://user@host/db); needs the 'postgres' extra"
+        ),
+    )
+    ap.add_argument(
+        "--table",
+        help="target table for --postgres-dsn (default: the schema's table)",
+    )
+    ap.add_argument(
+        "--truncate",
+        action="store_true",
+        help="with --postgres-dsn, empty the target table before loading",
+    )
+    ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=connectors.BATCH_SIZE,
+        help=f"rows per INSERT batch (default {connectors.BATCH_SIZE})",
     )
     ap.add_argument(
         "--dry-run",
@@ -354,21 +377,38 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         state_out = args.output + ".state"
 
     stack = ExitStack()
+    out: writer.Writer | connectors.PostgresWriter | None
     out_fh: object = nullcontext(sys.stdout)
-    if args.dry_run:
-        out = None
+    if args.postgres_dsn:
+        # A database target replaces the file, it is not an extra output: a
+        # run that also wrote a file would have two sources of truth.
+        try:
+            connection = connectors.connect_postgres(args.postgres_dsn)
+            out = connectors.PostgresWriter(
+                connection,
+                sch,
+                table=args.table,
+                batch_size=args.batch_size,
+                truncate=args.truncate,
+            )
+        except connectors.ConnectorError as exc:
+            print(f"postgres error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
         out_fh = nullcontext(sys.stdout)
-    elif args.format in TEXT_FORMATS:
-        if args.output == "-":
-            out_fh = nullcontext(sys.stdout)
-            try:
-                out = writer.make_writer(args.format, sch, sys.stdout)
-            except ValueError as exc:
-                stack.close()
-                print(f"output error: {exc}", file=sys.stderr)
-                return EXIT_ERROR
-        else:
-            if args.format == "singer":
+    else:
+        connection = None
+        if args.dry_run:
+            out = None
+        elif args.format in TEXT_FORMATS:
+            if args.output == "-":
+                out_fh = nullcontext(sys.stdout)
+                try:
+                    out = writer.make_writer(args.format, sch, sys.stdout)
+                except ValueError as exc:
+                    stack.close()
+                    print(f"output error: {exc}", file=sys.stderr)
+                    return EXIT_ERROR
+            elif args.format == "singer":
                 # Appending to a partial output keeps a resumed run
                 # byte-identical to an uninterrupted one.
                 mode = "a" if resume_from else "w"
@@ -402,24 +442,23 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
                     print(f"output error: {exc}", file=sys.stderr)
                     return EXIT_ERROR
                 try:
-                    out = writer.make_writer(args.format, sch, out_fh)
+                    out = writer.make_writer(args.format, sch, cast("TextIO", out_fh))
                 except ValueError as exc:
                     stack.close()
                     print(f"output error: {exc}", file=sys.stderr)
                     return EXIT_ERROR
-    else:
-        out_fh = nullcontext(sys.stdout)
-        try:
-            out = writer.make_writer(
-                args.format,
-                sch,
-                args.output,
-                float_decimals=args.excel_float_decimals,
-            )
-        except (OSError, ValueError) as exc:
-            stack.close()
-            print(f"output error: {exc}", file=sys.stderr)
-            return EXIT_ERROR
+        else:
+            try:
+                out = writer.make_writer(
+                    args.format,
+                    sch,
+                    args.output,
+                    float_decimals=args.excel_float_decimals,
+                )
+            except (OSError, ValueError) as exc:
+                stack.close()
+                print(f"output error: {exc}", file=sys.stderr)
+                return EXIT_ERROR
 
     try:
         reader = make_reader(sch, args.input, args.plugins_dir)
@@ -433,7 +472,15 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         return EXIT_ERROR
 
     return _run_conversion(
-        args, sch, out_fh, out, records, stats, rule_engine, dedup_index
+        args,
+        sch,
+        out_fh,
+        out,
+        records,
+        stats,
+        rule_engine,
+        dedup_index,
+        connection=connection,
     )
 
 
@@ -446,6 +493,7 @@ def _run_conversion(
     stats: validator.Stats,
     rule_engine,
     dedup_index=None,
+    connection=None,
 ) -> int:
     def serial_results():
         val = validator.Validator(sch)
@@ -513,15 +561,26 @@ def _run_conversion(
     for violation in violations:
         print(f"  rule violation: {violation.message}", file=sys.stderr)
 
+    if isinstance(out, connectors.PostgresWriter):
+        # The audit trail for a database load is the load report: it says how
+        # many rows landed, in how many batches, and whether the target was
+        # emptied first. A file checksum would prove nothing here.
+        print(out.report.to_json(), file=sys.stderr)
     if args.checksum and not args.dry_run and args.output != "-":
         try:
-            sidecar = args.output + ".sha256"
-            summary = audit.build_summary(
-                args.input, args.output, sch, stats, violations
-            )
-            with open(sidecar, "w", encoding="utf-8") as fh:
-                fh.write("\n".join(summary) + "\n")
-            print(f"audit summary: {sidecar}")
+            if isinstance(out, connectors.PostgresWriter):
+                sidecar = args.output + ".load.json"
+                with open(sidecar, "w", encoding="utf-8") as fh:
+                    fh.write(out.report.to_json() + "\n")
+                print(f"load report: {sidecar}")
+            else:
+                sidecar = args.output + ".sha256"
+                summary = audit.build_summary(
+                    args.input, args.output, sch, stats, violations
+                )
+                with open(sidecar, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(summary) + "\n")
+                print(f"audit summary: {sidecar}")
         except OSError as exc:
             print(f"audit error: {exc}", file=sys.stderr)
 
