@@ -11,3 +11,7 @@ build/
 .pypirc
 .env
 *.pypirc
+*token*.txt
+*secret*.txt
+*.pem
+*.key
