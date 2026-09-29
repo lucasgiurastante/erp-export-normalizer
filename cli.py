@@ -37,6 +37,9 @@ from core import (
     writer,
 )
 from core import (
+    diff as diff_mod,
+)
+from core import (
     schema as schema_mod,
 )
 
@@ -128,6 +131,46 @@ def build_parser() -> argparse.ArgumentParser:
 
     reg = sub.add_parser("registry", help="validate a schema library directory")
     reg.add_argument("dir", help="directory of *.yaml schemas")
+
+    df = sub.add_parser(
+        "diff",
+        help="row-level diff between two conversions, keyed",
+    )
+    df.add_argument(
+        "old",
+        metavar="OLD_SCHEMA=OLD_INPUT",
+        help="'schema.yaml=input.txt' of the baseline export",
+    )
+    df.add_argument(
+        "new",
+        metavar="NEW_SCHEMA=NEW_INPUT",
+        help="'schema.yaml=input.txt' of the new export",
+    )
+    df.add_argument(
+        "--key",
+        action="append",
+        default=[],
+        dest="key_fields",
+        metavar="FIELD",
+        help="key column (repeatable); the composite identifies a row",
+    )
+    df.add_argument(
+        "--fields",
+        default="",
+        help="comma-separated fields to compare (default: all fields)",
+    )
+    df.add_argument(
+        "--sample-limit",
+        type=int,
+        default=20,
+        help="max sample entries printed per change kind (default 20)",
+    )
+    df.add_argument(
+        "--max-keys",
+        type=int,
+        help="fail instead of indexing more distinct keys than this",
+    )
+    df.add_argument("--json", action="store_true", help="emit the diff as JSON")
 
     xc = sub.add_parser(
         "crosscheck",
@@ -413,6 +456,58 @@ def generate_main(args) -> int:
     return EXIT_OK
 
 
+def _split_pair(pair: str, what: str) -> tuple[str, str]:
+    if "=" not in pair:
+        raise ValueError(f"{what}: expected SCHEMA=INPUT, got {pair!r}")
+    schema_path, input_path = pair.split("=", 1)
+    return schema_path, input_path
+
+
+def diff_main(args) -> int:
+    try:
+        old_schema, old_input = _split_pair(args.old, "old")
+        new_schema, new_input = _split_pair(args.new, "new")
+    except ValueError as exc:
+        print(f"diff error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    compare = [f.strip() for f in args.fields.split(",") if f.strip()]
+
+    try:
+        # Load both schemas up front so an invalid one fails before any work.
+        schema_mod.load_schema(old_schema)
+        schema_mod.load_schema(new_schema)
+    except (OSError, schema_mod.SchemaError) as exc:
+        print(f"diff error: {exc}", file=sys.stderr)
+        return EXIT_SCHEMA
+
+    old_label = os.path.basename(old_input)
+    new_label = os.path.basename(new_input)
+    try:
+        result = diff_mod.diff_rows(
+            old_label,
+            _iter_converted(old_schema, old_input, args.plugins_dir),
+            new_label,
+            _iter_converted(new_schema, new_input, args.plugins_dir),
+            key_fields=args.key_fields,
+            compare_fields=compare or None,
+            sample_limit=args.sample_limit,
+            max_keys=args.max_keys,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"diff error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if args.json:
+        payload = result.to_dict()
+        payload["old"] = old_label
+        payload["new"] = new_label
+        print(json.dumps(payload, indent=2))
+    else:
+        for line in diff_mod.format_report(result, old_label, new_label):
+            print(line)
+    return EXIT_OK if result.identical_result else EXIT_VALIDATION
+
+
 def _parse_checks(raw: str) -> tuple[dict, ...]:
     out: list[dict] = []
     for token in raw.split(","):
@@ -597,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
         return copybook_main(args)
     if args.command == "crosscheck":
         return crosscheck_main(args)
+    if args.command == "diff":
+        return diff_main(args)
     if args.command == "registry":
         return registry_main(args)
     if args.command == "serve":
