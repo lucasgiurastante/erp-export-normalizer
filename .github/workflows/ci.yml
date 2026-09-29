@@ -39,3 +39,40 @@ jobs:
         run: ruff check .
       - name: Typecheck
         run: mypy cli.py core
+
+  perf:
+    # Timing profile. The gate is a relative comparison against the baseline
+    # committed in the repo, never an absolute wall-clock limit: GitHub
+    # runners are noisy and absolute thresholds produce flaky failures.
+    # The determinism check is absolute and always enforced.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+      - name: Record baseline when missing
+        # First run (or a deliberate refresh) writes the reference timings.
+        if: ${{ hashFiles('perf-baseline.json') == '' }}
+        run: |
+          python scripts/perf_profile.py \
+            --lines 100000 \
+            --update-baseline perf-baseline.json
+      - name: Performance profile
+        run: |
+          python scripts/perf_profile.py \
+            --lines 100000 \
+            --tolerance 0.5 \
+            --baseline perf-baseline.json \
+            --output perf-report.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report
+          path: perf-report.json
+          if-no-files-found: ignore

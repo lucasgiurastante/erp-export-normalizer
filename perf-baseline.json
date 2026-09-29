@@ -1,0 +1,55 @@
+{
+  "lines": 100000,
+  "python": "3.12.14",
+  "platform": "macOS-15.4.1-arm64-arm-64bit",
+  "cases": [
+    {
+      "workers": 1,
+      "chunk_lines": 10000,
+      "seconds": 2.1414,
+      "rows": 100000,
+      "bytes": 10733338,
+      "md5": "1003ab060824f1618d1820ce0d19b440"
+    },
+    {
+      "workers": 2,
+      "chunk_lines": 10000,
+      "seconds": 3.0767,
+      "rows": 100000,
+      "bytes": 10733338,
+      "md5": "1003ab060824f1618d1820ce0d19b440"
+    },
+    {
+      "workers": 2,
+      "chunk_lines": 100000,
+      "seconds": 4.8438,
+      "rows": 100000,
+      "bytes": 10733338,
+      "md5": "1003ab060824f1618d1820ce0d19b440"
+    },
+    {
+      "workers": 4,
+      "chunk_lines": 10000,
+      "seconds": 3.2647,
+      "rows": 100000,
+      "bytes": 10733338,
+      "md5": "1003ab060824f1618d1820ce0d19b440"
+    },
+    {
+      "workers": 4,
+      "chunk_lines": 100000,
+      "seconds": 4.8342,
+      "rows": 100000,
+      "bytes": 10733338,
+      "md5": "1003ab060824f1618d1820ce0d19b440"
+    }
+  ],
+  "identical_outputs": true,
+  "md5": [
+    "1003ab060824f1618d1820ce0d19b440"
+  ],
+  "speedup_vs_serial": {
+    "w2": 0.44,
+    "w4": 0.44
+  }
+}
