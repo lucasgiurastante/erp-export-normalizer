@@ -105,9 +105,13 @@ class Validator:
                 details.append({"field": f.name, "message": msg, "raw": ""})
                 fields.append(FieldValue(name=f.name, value=None, raw=""))
                 continue
-            raw_text = raw.decode(
-                converters.codec_for(self.schema.codepage), errors="replace"
-            )
+            if f.type == "packed":
+                # binary BCD: render as hex for the report instead of decoding
+                raw_text = raw.hex()
+            else:
+                raw_text = raw.decode(
+                    converters.codec_for(self.schema.codepage), errors="replace"
+                )
             try:
                 value = converters.convert_field(raw, f, self.schema.codepage)
             except converters.ConversionError as exc:

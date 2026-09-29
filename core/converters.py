@@ -29,6 +29,9 @@ def decode_field(raw: bytes, field: Field, default_codepage: str) -> str:
 
 
 def convert_field(raw: bytes, field: Field, default_codepage: str) -> object:
+    if field.type == "packed":
+        # packed decimal is binary (BCD), never decoded through a codepage
+        return convert_packed(raw, field)
     return convert_text(decode_field(raw, field, default_codepage), field)
 
 
@@ -40,6 +43,47 @@ def convert_text(text: str, field: Field) -> object:
     if field.type == "decimal":
         return convert_decimal(text, field)
     return text
+
+
+# COMP-3 (packed decimal) sign nibbles. The last nibble of the field carries
+# the sign; 0xC/0xF are the common "positive" and 0xD the common "negative".
+# 0xA/0xB are the rarer alternating-sign variants seen in some compilers.
+PACKED_POSITIVE = frozenset({0xA, 0xC, 0xE, 0xF})
+PACKED_NEGATIVE = frozenset({0xB, 0xD})
+
+
+def convert_packed(raw: bytes, field: Field) -> decimal.Decimal:
+    """Decode a COMP-3 (packed decimal) byte field into a Decimal.
+
+    Layout: two BCD digits per byte, the final nibble being the sign, so an
+    N-byte field holds 2N-1 digits. `scale` positions the implied decimal
+    point (PIC S9(7)V99 COMP-3 -> scale 2, 5 bytes).
+    """
+    if not raw:
+        raise ConversionError("empty packed decimal")
+    nibbles: list[int] = []
+    for byte in raw:
+        nibbles.append(byte >> 4)
+        nibbles.append(byte & 0x0F)
+    sign = nibbles.pop()
+    if sign in PACKED_NEGATIVE:
+        negative = True
+    elif sign in PACKED_POSITIVE:
+        negative = False
+    else:
+        raise ConversionError(f"invalid packed decimal sign nibble 0x{sign:X}")
+    digits: list[str] = []
+    for nib in nibbles:
+        if nib > 9:
+            raise ConversionError(f"invalid packed decimal digit nibble 0x{nib:X}")
+        digits.append(str(nib))
+    text = "".join(digits)
+    if not text:
+        raise ConversionError("packed decimal has no digits")
+    value = decimal.Decimal(text)
+    if field.scale:
+        value = value.scaleb(-field.scale)
+    return -value if negative else value
 
 
 DATE_FORMATS = {

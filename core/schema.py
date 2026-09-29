@@ -18,7 +18,7 @@ from typing import Any
 
 import yaml
 
-SUPPORTED_TYPES = {"string", "date", "decimal"}
+SUPPORTED_TYPES = {"string", "date", "decimal", "packed"}
 SUPPORTED_DATE_FORMATS = {"YYYYMMDD", "YYYY-MM-DD", "DDMMYYYY", "DD/MM/YYYY", "YYMMDD"}
 SUPPORTED_ALIGNS = {"left", "right"}
 SUPPORTED_CODEPAGES = {"utf-8", "cp850", "cp1252", "latin-1", "ebcdic-cp037"}
@@ -176,6 +176,18 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
             elif date_format not in SUPPORTED_DATE_FORMATS:
                 errors.append(
                     f"fields[{i}] '{name}': unsupported date format {date_format!r}"
+                )
+        if ftype == "packed":
+            if raw.get("format") is not None:
+                errors.append(
+                    f"fields[{i}] '{name}': type packed does not accept 'format'"
+                )
+            if "scale" not in raw:
+                # scale may legitimately be 0 (integer packed decimal), but the
+                # key must be stated: it fixes where the implied point sits.
+                errors.append(
+                    f"fields[{i}] '{name}': type packed requires 'scale' "
+                    "(digits after the implied decimal point, 0 for integers)"
                 )
 
         if is_delimited:

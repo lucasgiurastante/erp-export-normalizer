@@ -1,0 +1,12 @@
+format: cobol_packed
+version: 1.0.0
+description: "COBOL sequential export with COMP-3 packed decimal balances (PIC S9(7)V99 COMP-3)"
+record_length: 40
+codepage: ebcdic-cp037
+table: cobol_packed
+fields:
+  - {name: record_key,   start: 0,  length: 6}
+  - {name: customer_name, start: 6,  length: 20}
+  - {name: balance,      start: 26, length: 5,  type: packed, scale: 2}
+  - {name: activity_date, start: 31, length: 8, type: date, format: YYYYMMDD}
+  - {name: status,       start: 39, length: 1}
