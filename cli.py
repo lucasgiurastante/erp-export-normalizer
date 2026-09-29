@@ -28,6 +28,7 @@ from core import (
     audit,
     copybook,
     crosscheck,
+    dedup,
     detector,
     generator,
     parallel,
@@ -111,6 +112,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--checksum",
         action="store_true",
         help="write an audit summary sidecar (<output>.sha256)",
+    )
+    ap.add_argument(
+        "--key",
+        action="append",
+        default=[],
+        dest="dedup_keys",
+        metavar="FIELD",
+        help=(
+            "fail on a repeated key (repeatable); the composite identifies "
+            "a row. Exits 3 and reports the duplicate lines."
+        ),
+    )
+    ap.add_argument(
+        "--max-keys",
+        type=int,
+        help="with --key, cap distinct keys tracked; fail instead of exceeding",
     )
     ap.add_argument(
         "--dry-run",
@@ -294,6 +311,15 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     rule_engine = rules.RuleEngine(sch.rules) if sch.rules else None
     stats = validator.Stats()
 
+    dedup_index = None
+    if args.dedup_keys:
+        try:
+            dedup.validate_key_fields(sch, args.dedup_keys)
+            dedup_index = dedup.DedupIndex(max_keys=args.max_keys)
+        except dedup.DedupError as exc:
+            print(f"dedup error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
     # Singer resume: a STATE file names the last record the target already
     # has, so we skip up to it. Appending to a partial output keeps the run
     # byte-identical to an uninterrupted one.
@@ -380,7 +406,9 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         print(f"input error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    return _run_conversion(args, sch, out_fh, out, records, stats, rule_engine)
+    return _run_conversion(
+        args, sch, out_fh, out, records, stats, rule_engine, dedup_index
+    )
 
 
 def _run_conversion(
@@ -391,6 +419,7 @@ def _run_conversion(
     records,
     stats: validator.Stats,
     rule_engine,
+    dedup_index=None,
 ) -> int:
     def serial_results():
         val = validator.Validator(sch)
@@ -423,6 +452,12 @@ def _run_conversion(
                     print(f"  line {result.line}: {status}{details}", file=sys.stderr)
                 if rule_engine is not None and result.ok:
                     rule_engine.observe({fv.name: fv.value for fv in result.fields})
+                if dedup_index is not None and result.ok:
+                    dedup_index.observe_row(
+                        {fv.name: fv.value for fv in result.fields},
+                        args.dedup_keys,
+                        result.line,
+                    )
                 if result.ok and out is not None:
                     out.write(result)
         except (OSError, ValueError) as exc:
@@ -430,6 +465,23 @@ def _run_conversion(
             return EXIT_ERROR
         if out is not None:
             out.finish()
+
+    dedup_failed = False
+    if dedup_index is not None:
+        report = dedup_index.report()
+        if report.has_duplicates:
+            dedup_failed = True
+            for dup in report.duplicates:
+                print(
+                    f"  line {dup.line}: field '{args.dedup_keys[0]}': "
+                    f"duplicate key {dup.key!r} first seen on line {dup.first_line}",
+                    file=sys.stderr,
+                )
+            if report.truncated:
+                print(
+                    f"  ({report.duplicate_count} duplicates, samples capped)",
+                    file=sys.stderr,
+                )
 
     violations = rule_engine.finalize() if rule_engine is not None else []
     for violation in violations:
@@ -455,13 +507,19 @@ def _run_conversion(
         summary_line = f"resumed from line {skip_until} | " + summary_line
     if sch.rules:
         summary_line += f" | rule violations: {len(violations)}"
+    if dedup_index is not None:
+        drep = dedup_index.report()
+        summary_line += (
+            f" | distinct keys: {drep.distinct_keys}"
+            f" | duplicates: {drep.duplicate_count}"
+        )
     print(summary_line, file=sys.stderr)
     for err in report["error_lines"]:
         # P1-3: err["errors"] ya trae "field 'X': <msg> | raw='...'"
         # (raw truncado a 50 chars en validator); prefijo "line N:" intacto
         # para scripts que lo parsean. "details" es estructurado opcional.
         print(f"  line {err['line']}: {'; '.join(err['errors'])}", file=sys.stderr)
-    if violations or report["errors"]:
+    if violations or dedup_failed or report["errors"]:
         return EXIT_VALIDATION
     return EXIT_OK
 
