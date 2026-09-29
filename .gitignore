@@ -6,3 +6,8 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# PyPI credentials — NEVER commit these
+.pypirc
+.env
+*.pypirc

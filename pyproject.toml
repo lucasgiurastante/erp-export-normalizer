@@ -28,12 +28,21 @@ excel = ["openpyxl>=3.1"]
 dataframe = ["pandas>=2", "polars>=1"]
 spark = ["pyspark>=4"]
 lint = ["ruff>=0.9", "mypy>=1.13"]
+dev = [
+    "build>=1.2",
+    "twine>=5.1",
+    "pytest>=8.0",
+    "ruff>=0.9",
+    "mypy>=1.13",
+]
 all = [
     "pyarrow>=14",
     "openpyxl>=3.1",
     "pandas>=2",
     "polars>=1",
     "pyspark>=4",
+    "ruff>=0.9",
+    "mypy>=1.13",
 ]
 
 [tool.ruff]
