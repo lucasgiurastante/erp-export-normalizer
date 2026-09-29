@@ -24,6 +24,7 @@ import yaml
 
 from core import (
     audit,
+    copybook,
     detector,
     generator,
     parallel,
@@ -44,6 +45,7 @@ EXIT_VALIDATION = 3
 
 TEXT_FORMATS = {"json", "csv", "ndjson", "sql", "singer"}
 OUTPUT_EXT = {"excel": "xlsx"}
+DEFAULT_CODEPAGE_HINT = "ebcdic-cp037"
 
 
 def _ext_for(fmt: str) -> str:
@@ -124,6 +126,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     reg = sub.add_parser("registry", help="validate a schema library directory")
     reg.add_argument("dir", help="directory of *.yaml schemas")
+
+    cpy = sub.add_parser(
+        "copybook",
+        help="import a COBOL copybook (FD/PIC clauses) as a YAML schema",
+    )
+    cpy.add_argument("input", help="copybook source file (.cpy/.cbl/.txt)")
+    cpy.add_argument("--output", required=True, help="YAML schema to write")
+    cpy.add_argument(
+        "--record", help="01 record name when the copybook declares several"
+    )
+    cpy.add_argument("--name", help="optional SQL table name for the schema")
+    cpy.add_argument(
+        "--codepage",
+        default=copybook.DEFAULT_CODEPAGE,
+        help=f"record codepage (default {DEFAULT_CODEPAGE_HINT})",
+    )
+    cpy.add_argument(
+        "--no-date",
+        action="store_true",
+        help="do not infer PIC 9(8) as a date",
+    )
 
     srv = sub.add_parser("serve", help="start the zero-dependency web UI (air-gapped)")
     srv.add_argument("--host", default="127.0.0.1")
@@ -347,6 +370,36 @@ def generate_main(args) -> int:
     return EXIT_OK
 
 
+def copybook_main(args) -> int:
+    try:
+        data = copybook.parse_copybook(
+            args.input,
+            record=args.record,
+            table=args.name,
+            codepage=args.codepage,
+            want_date=not args.no_date,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"copybook error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        schema_mod.build_schema(data)  # validate before writing
+    except schema_mod.SchemaError as exc:
+        print(f"copybook error: generated schema invalid: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+    except OSError as exc:
+        print(f"copybook error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    print(
+        f"schema written: {args.output} "
+        f"({len(data['fields'])} fields, record_length {data['record_length']})"
+    )
+    return EXIT_OK
+
+
 def registry_main(args) -> int:
     paths = sorted(glob.glob(os.path.join(args.dir, "*.yaml")))
     if not paths:
@@ -390,6 +443,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.command == "generate-schema":
         return generate_main(args)
+    if args.command == "copybook":
+        return copybook_main(args)
     if args.command == "registry":
         return registry_main(args)
     if args.command == "serve":
