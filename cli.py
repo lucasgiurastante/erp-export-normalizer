@@ -20,6 +20,7 @@ import json
 import os
 import sys
 from contextlib import ExitStack, nullcontext
+from typing import TextIO, cast
 
 import yaml
 
@@ -115,6 +116,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="validate only, produce no output; print error report",
+    )
+    ap.add_argument(
+        "--state",
+        help=(
+            "singer only: resume from this STATE file, skipping records already emitted"
+        ),
+    )
+    ap.add_argument(
+        "--state-every",
+        type=int,
+        default=writer.SingerWriter.DEFAULT_STATE_EVERY,
+        help=(
+            "singer only: emit a STATE bookmark every N records "
+            f"(default {writer.SingerWriter.DEFAULT_STATE_EVERY}, 0 = only at the end)"
+        ),
     )
 
     sub = ap.add_subparsers(dest="command")
@@ -278,6 +294,18 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     rule_engine = rules.RuleEngine(sch.rules) if sch.rules else None
     stats = validator.Stats()
 
+    # Singer resume: a STATE file names the last record the target already
+    # has, so we skip up to it. Appending to a partial output keeps the run
+    # byte-identical to an uninterrupted one.
+    resume_from = 0
+    state_out: str | None = None
+    if args.format == "singer" and not args.dry_run and args.output != "-":
+        if args.state:
+            resume_from = writer.resume_line(args.state)
+            if resume_from:
+                print(f"resuming singer from line {resume_from}", file=sys.stderr)
+        state_out = args.output + ".state"
+
     stack = ExitStack()
     out_fh: object = nullcontext(sys.stdout)
     if args.dry_run:
@@ -293,19 +321,45 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
                 print(f"output error: {exc}", file=sys.stderr)
                 return EXIT_ERROR
         else:
-            try:
-                # noqa: SIM115 - file kept open for streaming; closed by `with out_fh`
-                out_fh = open(args.output, "w", encoding="utf-8", newline="")  # noqa: SIM115
-            except OSError as exc:
-                stack.close()
-                print(f"output error: {exc}", file=sys.stderr)
-                return EXIT_ERROR
-            try:
-                out = writer.make_writer(args.format, sch, out_fh)
-            except ValueError as exc:
-                stack.close()
-                print(f"output error: {exc}", file=sys.stderr)
-                return EXIT_ERROR
+            if args.format == "singer":
+                # Appending to a partial output keeps a resumed run
+                # byte-identical to an uninterrupted one.
+                mode = "a" if resume_from else "w"
+                try:
+                    out_fh = open(args.output, mode, encoding="utf-8", newline="")  # noqa: SIM115
+                except OSError as exc:
+                    stack.close()
+                    print(f"output error: {exc}", file=sys.stderr)
+                    return EXIT_ERROR
+                try:
+                    out = writer.make_writer(
+                        args.format,
+                        sch,
+                        cast("TextIO", out_fh),
+                        state_path=state_out,
+                        state_every=args.state_every,
+                        # The target already holds the SCHEMA message from the
+                        # first run; re-emitting it would break byte-equality.
+                        emit_schema=resume_from == 0,
+                    )
+                except ValueError as exc:
+                    stack.close()
+                    print(f"output error: {exc}", file=sys.stderr)
+                    return EXIT_ERROR
+            else:
+                try:
+                    # noqa: SIM115 - kept open for streaming; closed by `with out_fh`
+                    out_fh = open(args.output, "w", encoding="utf-8", newline="")  # noqa: SIM115
+                except OSError as exc:
+                    stack.close()
+                    print(f"output error: {exc}", file=sys.stderr)
+                    return EXIT_ERROR
+                try:
+                    out = writer.make_writer(args.format, sch, out_fh)
+                except ValueError as exc:
+                    stack.close()
+                    print(f"output error: {exc}", file=sys.stderr)
+                    return EXIT_ERROR
     else:
         out_fh = nullcontext(sys.stdout)
         try:
@@ -326,6 +380,18 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         print(f"input error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    return _run_conversion(args, sch, out_fh, out, records, stats, rule_engine)
+
+
+def _run_conversion(
+    args,
+    sch,
+    out_fh,
+    out,
+    records,
+    stats: validator.Stats,
+    rule_engine,
+) -> int:
     def serial_results():
         val = validator.Validator(sch)
         for lineno, record in records:
@@ -338,6 +404,14 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         if args.workers and args.workers > 1
         else serial_results()
     )
+
+    # Only the singer tap has a STATE contract; --state must not silently
+    # truncate other formats.
+    skip_until = 0
+    if args.state and args.format == "singer" and not args.dry_run:
+        skip_until = writer.resume_line(args.state)
+    if skip_until:
+        results = (r for r in results if r.line > skip_until)
 
     with out_fh:
         try:
@@ -377,6 +451,8 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
     summary_line = (
         f"records: {report['total']} | ok: {report['ok']} | errors: {report['errors']}"
     )
+    if skip_until:
+        summary_line = f"resumed from line {skip_until} | " + summary_line
     if sch.rules:
         summary_line += f" | rule violations: {len(violations)}"
     print(summary_line, file=sys.stderr)

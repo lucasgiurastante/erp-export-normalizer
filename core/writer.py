@@ -174,11 +174,41 @@ class SingerWriter:
     Deterministic by construction: no `time_extracted` timestamps, so the
     same input always produces the same stream. Compatible with Singer
     targets and Airbyte's CDK tap runners.
+
+    The STATE message carries a real bookmark (the source line of the last
+    record actually emitted), written every `state_every` records and again
+    at `finish()`. A target can therefore resume from the last STATE it
+    received instead of restarting a multi-hour extract.
+
+    Resuming is byte-exact: `emit_schema=False` suppresses the SCHEMA
+    message (the target already has it), so
+
+        first 5000 lines  ++  resume from the STATE at line 5000
+        ==  one uninterrupted run of the whole file
+
+    `resume_line()` reads a STATE file back and returns the bookmark.
     """
 
-    def __init__(self, schema: Schema, out: TextIO):
+    DEFAULT_STATE_EVERY = 1000
+
+    def __init__(
+        self,
+        schema: Schema,
+        out: TextIO,
+        state_path: str | None = None,
+        state_every: int | None = None,
+        emit_schema: bool = True,
+    ):
         self._out = out
         self._stream = schema.table or schema.format or "export"
+        self._state_path = state_path
+        self._state_every = state_every or self.DEFAULT_STATE_EVERY
+        self._emitted = 0
+        self._last_line = 0
+        if emit_schema:
+            self._write_schema(schema)
+
+    def _write_schema(self, schema: Schema) -> None:
         properties = {f.name: _singer_type(f) for f in schema.fields}
         message = {
             "type": "SCHEMA",
@@ -193,9 +223,51 @@ class SingerWriter:
         self._out.write(
             json.dumps({"type": "RECORD", "stream": self._stream, "record": row}) + "\n"
         )
+        self._emitted += 1
+        self._last_line = result.line
+        if self._state_every and self._emitted % self._state_every == 0:
+            self._emit_state()
+
+    def _state_value(self) -> dict:
+        # Only the source line of the last emitted record. A cumulative
+        # record counter would restart on resume and break byte-equality
+        # between an interrupted run and a single uninterrupted one.
+        return {
+            "stream": self._stream,
+            "line": self._last_line,
+        }
+
+    def _emit_state(self) -> None:
+        message = {"type": "STATE", "value": self._state_value()}
+        self._out.write(json.dumps(message) + "\n")
+        if self._state_path:
+            with open(self._state_path, "w", encoding="utf-8") as fh:
+                json.dump(message, fh)
+                fh.write("\n")
 
     def finish(self) -> None:
-        self._out.write(json.dumps({"type": "STATE", "value": {}}) + "\n")
+        self._emit_state()
+
+
+def resume_line(state_path: str) -> int:
+    """Read the last STATE bookmark from `state_path`; 0 when unusable.
+
+    A missing, empty or malformed state file means "start from the top"
+    rather than an error: a target that lost its state should still make
+    progress instead of failing the run.
+    """
+    try:
+        with open(state_path, encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (OSError, ValueError):
+        return 0
+    value = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(value, dict):
+        return 0
+    line = value.get("line")
+    if isinstance(line, bool) or not isinstance(line, int) or line < 0:
+        return 0
+    return line
 
 
 def _singer_type(field) -> dict:
@@ -204,7 +276,15 @@ def _singer_type(field) -> dict:
     return {"type": "string"}
 
 
-def make_writer(fmt: str, schema: Schema, out: TextIO | str) -> Writer:
+def make_writer(
+    fmt: str,
+    schema: Schema,
+    out: TextIO | str,
+    *,
+    state_path: str | None = None,
+    state_every: int | None = None,
+    emit_schema: bool = True,
+) -> Writer:
     if fmt == "json":
         return JsonWriter(schema, cast(TextIO, out))
     if fmt == "csv":
@@ -218,5 +298,11 @@ def make_writer(fmt: str, schema: Schema, out: TextIO | str) -> Writer:
     if fmt == "excel":
         return ExcelWriter(schema, cast(str, out))
     if fmt == "singer":
-        return SingerWriter(schema, cast(TextIO, out))
+        return SingerWriter(
+            schema,
+            cast(TextIO, out),
+            state_path=state_path,
+            state_every=state_every,
+            emit_schema=emit_schema,
+        )
     raise ValueError(f"unsupported output format: {fmt!r}")
