@@ -1,0 +1,95 @@
+registry: 1
+updated: '2026-09-29'
+schemas:
+- name: jde_ar
+  path: core/formats/jde_ar.yaml
+  version: 1.0.0
+  sha256: 3aabefff993cf1674f13c984aa893be091d821b506417a87d58ec1e65e0284fc
+  system: JD Edwards
+  description: Accounts Receivable export
+  tags:
+  - jde
+  - ar
+  - fixed-width
+- name: jde_ap
+  path: core/formats/jde_ap.yaml
+  version: 1.0.0
+  sha256: 0e9bacb250310057a52eac53817b2af38aae4190242375e86a3da50a27870963
+  system: JD Edwards
+  description: Accounts Payable export
+  tags:
+  - jde
+  - ap
+  - fixed-width
+- name: jde_gl
+  path: core/formats/jde_gl.yaml
+  version: 1.0.0
+  sha256: 5c47ed50efe8da312fbb317f724c702574224a0c77adf84599a491753680dcfb
+  system: JD Edwards
+  description: General Ledger export
+  tags:
+  - jde
+  - gl
+  - fixed-width
+- name: jde_gl_distinct
+  path: core/formats/jde_gl_distinct.yaml
+  version: 1.0.0
+  sha256: 565eb2ea100091d3da08e386032579e33eea9f45fd034dea1969447b94522500
+  system: JD Edwards
+  description: General Ledger export with DISTINCT set
+  tags:
+  - jde
+  - gl
+  - distinct
+- name: sap_batch
+  path: core/formats/sap_batch.yaml
+  version: 1.0.0
+  sha256: 1acb3a966a35bcb0abc071d2e56928bca29d8fc4850ff587e7aaafcc5305dfa9
+  system: SAP
+  description: Batch header export
+  tags:
+  - sap
+  - batch
+  - fixed-width
+- name: sap_fi_document
+  path: core/formats/sap_fi_document.yaml
+  version: 1.0.0
+  sha256: 41cf1199af7fd2d782d38e58fd34f6ba1da26bad50798d77dc88d2a24ce7c5a5
+  system: SAP FI
+  description: Invoice/document header (BKPF-like)
+  tags:
+  - sap
+  - fi
+  - document
+- name: sap_fi_bseg
+  path: core/formats/sap_fi_bseg.yaml
+  version: 1.0.0
+  sha256: 8745a226567bafa796444c831d9ea2221424c852ffd719bdaa4c187366126fa7
+  system: SAP FI
+  description: Invoice line items (BSEG-like)
+  tags:
+  - sap
+  - fi
+  - bseg
+  - line-item
+- name: cobol_fixed
+  path: core/formats/cobol_fixed.yaml
+  version: 1.0.0
+  sha256: e7f98e3afd88fd994174648d86648a8789d84bc1cd46b896129cc30cf465de70
+  system: COBOL
+  description: EBCDIC CP037 sequential export
+  tags:
+  - cobol
+  - ebcdic
+  - mainframe
+- name: cobol_packed
+  path: core/formats/cobol_packed.yaml
+  version: 1.0.0
+  sha256: 5c9672c610f4d9201ea9bd84d278a29920358d0713c6cfe631d3d9c87b4bb041
+  system: COBOL
+  description: EBCDIC CP037 with COMP-3 packed decimal amounts
+  tags:
+  - cobol
+  - ebcdic
+  - comp-3
+  - packed

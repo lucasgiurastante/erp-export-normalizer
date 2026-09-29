@@ -42,6 +42,9 @@ from core import (
     diff as diff_mod,
 )
 from core import (
+    registry as registry_mod,
+)
+from core import (
     schema as schema_mod,
 )
 
@@ -171,8 +174,17 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--codepage", default="utf-8")
     gen.add_argument("--no-header", action="store_true", help="first line is data")
 
-    reg = sub.add_parser("registry", help="validate a schema library directory")
-    reg.add_argument("dir", help="directory of *.yaml schemas")
+    reg = sub.add_parser("registry", help="schema library and versioned registry tools")
+    # argparse cannot mix an optional positional with subparsers: the first
+    # bare word is always claimed as a subcommand name, which would break the
+    # `registry <dir>` form that predates them and is in the README. So the
+    # subcommands are dispatched by hand.
+    reg.add_argument(
+        "rest",
+        nargs="*",
+        metavar="ARGS",
+        help=("'validate DIR' | 'search INDEX [TERM]' | 'verify INDEX' | legacy 'DIR'"),
+    )
 
     df = sub.add_parser(
         "diff",
@@ -763,6 +775,109 @@ def crosscheck_main(args) -> int:
     return EXIT_OK if report["ok"] else EXIT_VALIDATION
 
 
+REGISTRY_USAGE = (
+    "usage: erp-normalize registry {validate DIR | search INDEX [TERM] | "
+    "verify INDEX} | erp-normalize registry DIR"
+)
+
+
+def registry_main(args) -> int:
+    rest = list(args.rest or [])
+    if not rest:
+        print(REGISTRY_USAGE, file=sys.stderr)
+        return EXIT_ERROR
+    command, params = rest[0], rest[1:]
+    if command == "validate":
+        if len(params) != 1:
+            print("usage: erp-normalize registry validate DIR", file=sys.stderr)
+            return EXIT_ERROR
+        directory = params[0]
+    elif command == "search":
+        if not params:
+            print("usage: erp-normalize registry search INDEX [TERM]", file=sys.stderr)
+            return EXIT_ERROR
+        return registry_search_main(params)
+    elif command == "verify":
+        if not params or params[0].startswith("-"):
+            print("usage: erp-normalize registry verify INDEX", file=sys.stderr)
+            return EXIT_ERROR
+        check_schema = "--no-schema-check" not in params
+        return registry_verify_main(params[0], check_schema)
+    elif command.startswith("-"):
+        print(REGISTRY_USAGE, file=sys.stderr)
+        return EXIT_ERROR
+    else:
+        # legacy: `erp-normalize registry <dir>`
+        directory = command
+    paths = sorted(glob.glob(os.path.join(directory, "*.yaml")))
+    if not paths:
+        print(f"no schemas found in {directory}", file=sys.stderr)
+        return EXIT_ERROR
+    print(f"{'format':<22}{'version':<10}{'len':<6}{'table':<18}{'fields':<7}source")
+    invalid = 0
+    seen: dict[tuple[str, str], str] = {}
+    for path in paths:
+        try:
+            sch = schema_mod.load_schema(path)
+        except (OSError, schema_mod.SchemaError) as exc:
+            print(f"INVALID {path}: {exc}", file=sys.stderr)
+            invalid += 1
+            continue
+        key = (sch.format, sch.version)
+        if key in seen:
+            print(f"duplicate {key[0]}@{key[1]} (also {seen[key]})", file=sys.stderr)
+        seen[key] = path
+        length = sch.record_length if sch.record_length is not None else "n/a"
+        print(
+            f"{sch.format:<22}{sch.version:<10}{length:<6}"
+            f"{(sch.table or ''):<18}{len(sch.fields):<7}{path}"
+        )
+    return EXIT_SCHEMA if invalid else EXIT_OK
+
+
+def registry_search_main(params: list[str]) -> int:
+    indexes, term = params[:-1], (params[-1] if len(params) > 1 else "")
+    try:
+        entries: list = []
+        for index in indexes:
+            entries.extend(registry_mod.load_index(index))
+    except registry_mod.RegistryError as exc:
+        print(f"registry error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    hits = registry_mod.search(entries, term)
+    if not hits:
+        print(f"no schema matches {term!r}")
+        return EXIT_OK
+    print(f"{'name':<22} {'version':<9} {'system':<16} description")
+    for entry in hits:
+        print(
+            f"{entry.name:<22} {entry.version:<9} {entry.system or '-':<16} "
+            f"{entry.description}"
+        )
+    print(f"\n{len(hits)} of {len(entries)} schema(s)")
+    return EXIT_OK
+
+
+def registry_verify_main(index: str, check_schema: bool = True) -> int:
+    try:
+        entries = registry_mod.load_index(index)
+    except registry_mod.RegistryError as exc:
+        print(f"registry error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    report = registry_mod.verify(entries, check_schema=check_schema)
+    bad = 0
+    for row in report:
+        if row["ok"]:
+            print(f"  ok    {row['name']} {row['version']}")
+            continue
+        bad += 1
+        print(f"  FAIL  {row['name']} {row['version']}", file=sys.stderr)
+        for problem in row["problems"]:
+            print(f"          {problem}", file=sys.stderr)
+    print(f"{len(report) - bad}/{len(report)} entries verified")
+    return EXIT_OK if bad == 0 else EXIT_VALIDATION
+
+
 def copybook_main(args) -> int:
     try:
         data = copybook.parse_copybook(
@@ -791,33 +906,6 @@ def copybook_main(args) -> int:
         f"({len(data['fields'])} fields, record_length {data['record_length']})"
     )
     return EXIT_OK
-
-
-def registry_main(args) -> int:
-    paths = sorted(glob.glob(os.path.join(args.dir, "*.yaml")))
-    if not paths:
-        print(f"no schemas found in {args.dir}", file=sys.stderr)
-        return EXIT_ERROR
-    print(f"{'format':<22}{'version':<10}{'len':<6}{'table':<18}{'fields':<7}source")
-    invalid = 0
-    seen: dict[tuple[str, str], str] = {}
-    for path in paths:
-        try:
-            sch = schema_mod.load_schema(path)
-        except (OSError, schema_mod.SchemaError) as exc:
-            print(f"INVALID {path}: {exc}", file=sys.stderr)
-            invalid += 1
-            continue
-        key = (sch.format, sch.version)
-        if key in seen:
-            print(f"duplicate {key[0]}@{key[1]} (also {seen[key]})", file=sys.stderr)
-        seen[key] = path
-        length = sch.record_length if sch.record_length is not None else "n/a"
-        print(
-            f"{sch.format:<22}{sch.version:<10}{length:<6}"
-            f"{(sch.table or ''):<18}{len(sch.fields):<7}{path}"
-        )
-    return EXIT_SCHEMA if invalid else EXIT_OK
 
 
 def serve_main(args) -> int:
