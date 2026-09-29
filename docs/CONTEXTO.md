@@ -54,28 +54,77 @@ input.txt ──► [detector] ──► [parser (schema YAML)] ──► [conve
 | `core/crosscheck.py`| Reconciliación entre archivos (sum/count/keys)          |
 | `core/diff.py`      | Diff por clave entre exports (added/removed/changed)    |
 
-## Estado actual (2026-09-29, cierre de P1)
+## Estado actual (2026-09-29, cierre de P2)
 
-- **Rama `main`**, working tree limpio, sincronizado con GitHub
-  (lucasgiurastante/erp-export-normalizer).
-- **213 tests OK** (1 skip — pyspark sin JVM), ruff limpio, mypy limpio,
-  `pytest` (como corre CI): 212 passed + 1 skipped.
-- Ronda P0/P1 del instructivo **cerrada por completo**: 6 tareas nuevas
-  entregadas, una por commit, con su tarjeta de Trello al día.
-- **Plugin API v1 congelada** (`docs/PLUGIN_API_v1.md`).
+- **Rama `main`**, working tree limpio, sincronizada con `origin/main`.
+- **345 tests OK** (1 skip — pyspark sin JVM), ruff y mypy limpios,
+  CI verde en 3.10/3.11/3.12/3.13 (incluye el job `perf`).
+- Las tres listas del tablero están cerradas salvo dos tarjetas que no son
+  código (beca Anthropic, SaaS fuera de alcance). Detalle abajo.
+- `v0.2.0` publicada en PyPI y GitHub. La 0.3.0 recogerá la ronda P2.
+
+### Ronda P2 (2026-09-29) — cerrada
+
+| Tarea | Commit | Nota |
+|---|---|---|
+| Normalización de texto por campo | `5ede7cb` | trim/case/NFKC, validados en `build_schema` |
+| Máscara PII en output | `5ede7cb` | `full`/`partial`/`hash`, mismo bloque de código |
+| Dedup por clave en streaming | `9aeb969` | `--key`, índice acotado con `--max-keys` |
+| Excel con tipos nativos | `1b866f7` | `date`/`numeric` reales, `--excel-float-decimals` |
+| Web UI: validación visual | `3335556` | `/validate`, raw resaltado, sin `innerHTML` |
+| Registry público versionado | `fe545f9` | `docs/RFC_REGISTRY.md` + `registry.yaml` + search/verify |
+| Conector Postgres | `cb247bf` | `--postgres-dsn`, `numeric` nunca `float` |
+| Lint + tipos | `f64d9bd` | conexión fallida da mensaje, no traceback |
+| `pyproject` extras | `33f05c3` | `all` incluye lint; extra `dev` y `postgres` |
 
 ### Fases
 
 | Fase | Contenido | Estado |
-|------|-----------|--------|
+|---|---|---|
 | 0 | MVP fixed-width → JSON/CSV, YAML schema | ✅ |
 | 1 | NDJSON/Parquet/Excel/SQL, autodetect, schemas built-in | ✅ |
 | 2 | Parallel, batch glob, generate-schema, Pandas/Polars | ✅ |
 | 3 | Rules, audit sidecars, registry, web UI | ✅ |
 | 4 | Singer tap + Spark backend | ✅ parcial — falta SaaS y marketplace |
-| 5 | Reconciliación, diff, herramientas COBOL | ✅ (nuevo, 2026-09-29) |
+| 5 | Reconciliación, diff, COBOL, normalización, dedup, destinos | ✅ |
+
+### Decisiones de diseño que conviene no olvidar
+
+- **`--max-keys` en vez de HyperLogLog.** Una estimación no sirve cuando el
+  error dice línea y valor. El límite falla en voz alta en vez de degradar.
+- **NFKC no translitera entre alfabetos.** Normalizar compatibilidad no es
+  adivinar el dato; hay test que lo fija.
+- **`case`/`normalize` solo en campos string.** Aplicarlos a un decimal
+  reordenaría en silencio lo que el schema dice.
+- **Un valor enmascarado sale como string.** Si `2030...` siguiera siendo
+  número, la auditoría estaría mintiendo sobre lo exportado.
+- **`decimal` → `numeric` en Postgres, nunca `float`.** Un viaje de ida y
+  vuelta por float mueve importes en silencio.
+- **`rows_committed` ≠ `rows_written`.** El informe de carga cuenta solo lo
+  que llegó; reportar lo encolado sería mentir sobre el estado de la tabla.
+- **La web UI nunca usa `innerHTML`.** Un export con `<script>` en un campo
+  se muestra como texto. Hay test que falla si alguien lo introduce.
+- **Un checksum no autentica un índice.** El RFC lo dice: quien publica el
+  índice puede reescribir el checksum. Firmar es gestión de claves, no formato.
+- **El gate de performance es relativo y compara máquinas.** El baseline
+  está medido en el Mac del usuario, así que en CI se salta a propósito.
+- **Excel no tiene tipo solo-fecha:** las fechas se releen como `datetime`.
+
+## Pendiente real
+
+1. **Solicitud de beca Anthropic** — necesita datos del usuario
+   (`https://claude.com/contact-sales/claude-for-oss`).
+2. **Release v0.3.0** — recoger la ronda P2. Pendiente de decidir si BigQuery
+   y S3 merecen conector propio: cambian la promesa (particionado, multipart)
+   y no encajan en el diseño de batch secuencial del conector Postgres.
+3. **Tarjeta de P2 marcada fuera de alcance** (SaaS / registry central / UI
+   completa): se mantiene como registro de lo descartado, no como trabajo.
+
+Detalle histórico de P0 y la primera ronda de P1 en las tablas siguientes.
 
 ### Plan P0/P1 (instructivo 2026-09-28) — cerrado
+
+Histórico. El estado vigente está arriba.
 
 | Tarea | Estado | Commit |
 |---|---|---|
