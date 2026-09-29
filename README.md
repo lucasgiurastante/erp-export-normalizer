@@ -28,14 +28,29 @@ Same input + same schema = same output. Determinism is the audit guarantee.
   (`,`/`\t`/`;`/`|`), with optional header rows.
 - **Auto-detection** — omit `--schema`; the tool scores the built-in schema
   library against your file and picks the best match. Built-in library:
-  `jde_ar`, `jde_ap`, `jde_gl` (JD Edwards), `sap_batch`, `sap_fi_document`
-  (SAP), `cobol_fixed` (EBCDIC mainframe).
+  `jde_ar`, `jde_ap`, `jde_gl` (JD Edwards), `sap_batch`, `sap_fi_document`,
+  `sap_fi_bseg` (SAP), `jde_gl_distinct`, `cobol_fixed` (EBCDIC mainframe)
+  and `cobol_packed` (EBCDIC with COMP-3 balances).
 - **Schema generation** — `generate-schema` infers a delimited schema (names,
   types, scale) from an example file.
+- **COBOL copybook import** — `copybook` turns a copybook's `FD`/`PIC` clauses
+  into a ready schema, so the record layout stays in the client's own COBOL
+  source. `COMP-3` packed decimals, `COMP`/`BINARY` and implied decimal points
+  are resolved.
+- **COMP-3 packed decimals** — new `type: packed` for mainframe BCD fields
+  (`PIC S9(7)V99 COMP-3` → 5 bytes, `scale: 2`).
+- **Cross-file reconciliation** — `crosscheck` compares totals, row counts and
+  key sets across two or more exports in bounded memory.
+- **Row-level diff** — `diff` shows what actually changed between two exports:
+  added, removed, and field-level changes, with capped samples and exact counts.
+- **Resumable Singer tap** — `STATE` carries a real bookmark; `--state` resumes
+  an interrupted extract and produces byte-identical output.
 - **Batch + parallel** — glob inputs with `--output-dir`; `--workers N`
   parallelizes validation with byte-identical output.
 - **Business rules** — schema-level `sum` and `balance` (debits = credits)
   checks, evaluated in O(1) memory.
+- **Performance gate in CI** — a relative regression gate against a committed
+  baseline, plus an absolute determinism check across worker configurations.
 - **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
   hashes, schema version, counts, timestamp).
 
@@ -129,12 +144,73 @@ erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output expo
 # Singer tap stream (pipe into any Singer target)
 erp-normalize --schema core/formats/jde_ar.yaml --input export.txt --output - --format singer | target-postgres
 
+# resumable Singer tap: a STATE bookmark every 1000 records
+erp-normalize --schema core/formats/jde_ar.yaml --input huge.txt \
+  --output out.jsonl --format singer --state-every 1000
+# ...the run died. Pick it up where the target left off:
+erp-normalize --schema core/formats/jde_ar.yaml --input huge.txt \
+  --output out.jsonl --format singer --state out.jsonl.state
+
 # validate the schema library
 erp-normalize registry core/formats/
 
 # zero-dependency web UI (generate schemas without touching YAML)
 erp-normalize serve --port 8000
 ```
+
+### Importing a COBOL copybook
+
+The record layout usually already exists in the client's COBOL source. Import
+it instead of retyping the offsets:
+
+```bash
+erp-normalize copybook CUSTFILE.cpy --output cust.yaml --name cust_export
+erp-normalize --schema cust.yaml --input export.bin --output cust.json
+```
+
+The importer resolves `PIC` clauses and `USAGE` keywords:
+
+| COBOL | schema field |
+|---|---|
+| `PIC X(20)` | `string`, 20 bytes |
+| `PIC 9(8)` | `date` `YYYYMMDD` (or `decimal` with `--no-date`) |
+| `PIC S9(7)V99 COMP-3` | `packed`, `scale: 2`, 5 bytes |
+| `PIC S9(5) COMP` | `decimal`, machine-word width |
+
+`V` is the implied decimal point, so `S9(7)V99` is 7 integer digits plus 2
+decimals — 9 positions. Only `(n)` repeats a position; the `99` after `V` is
+two positions, not ninety-nine.
+
+### Reconciling and diffing two exports
+
+A file can pass every per-line check and still be wrong. `crosscheck` asks
+whether two exports reconcile; `diff` asks what actually changed.
+
+```bash
+# do the statement and the ledger agree on totals, counts and keys?
+erp-normalize crosscheck \
+  core/formats/jde_ar.yaml=statement.txt \
+  core/formats/jde_ar.yaml=ledger.txt \
+  --key id --sum amount --checks count,sum:amount,unique,missing
+
+# what changed between yesterday and today?
+erp-normalize diff \
+  core/formats/jde_ar.yaml=yesterday.txt \
+  core/formats/jde_ar.yaml=today.txt \
+  --key id --fields amount,date
+```
+
+```
+added=1 removed=1 changed=1 identical=1
+  + AR1004
+  - AR1003
+  ~ AR1001: amount: 1234.56 -> 1500
+```
+
+Both commands keep only one index of keys in memory, never the file itself,
+and `--max-keys` makes them fail loudly rather than index without limit. They
+exit `3` when something does not reconcile, so a pipeline can gate on them.
+`--json` emits the report for machine consumption.
 
 A conversion run prints a summary to stdout:
 
@@ -224,6 +300,13 @@ slice). `record_length` is not required. Validation still runs afterwards, so
 plugins get the same cumulative error report and exit codes. Run with
 `--plugins-dir` to use a non-default plugin directory.
 
+The full contract is frozen and versioned in
+[docs/PLUGIN_API_v1.md](docs/PLUGIN_API_v1.md): discovery, the mandatory
+`Reader(schema, path)` signature, `records(skip_first=False)` yielding
+`(lineno, bytes)`, raw-bytes semantics, the error contract (including wrapping
+a bad constructor as `PluginError`), and the semver rules for `v1.x`. Read it
+before publishing a third-party parser.
+
 ### DataFrame integration
 
 ```python
@@ -245,6 +328,9 @@ backend imports lazily — a JVM is needed only when it is called.
 | 1    | Runtime error (I/O)              |
 | 2    | Invalid schema                   |
 | 3    | Validation errors found          |
+
+`crosscheck` and `diff` also exit `3` when the exports do not reconcile, so a
+pipeline can gate on a single code.
 
 ## Architecture
 
@@ -275,7 +361,18 @@ pytest
 ruff check .
 ruff format --check .
 mypy cli.py core
+
+# performance profile: relative regression gate + absolute determinism check
+python scripts/perf_profile.py --lines 100000 \
+  --baseline perf-baseline.json --tolerance 0.5
+# refresh the committed baseline on purpose, not by accident
+python scripts/perf_profile.py --lines 100000 --update-baseline perf-baseline.json
 ```
+
+The performance gate is deliberately **relative**: shared CI runners are
+noisy, and an absolute wall-clock threshold produces flaky failures nobody
+trusts. The determinism check is **absolute** and never relaxes — every worker
+configuration must produce byte-identical output.
 
 ## Roadmap
 
@@ -288,8 +385,10 @@ mypy cli.py core
   sidecars, local registry verification, and the schema-generation web UI.
   A centralized community registry remains future.)*
 - Phase 4 — Airbyte/Singer connector, Databricks/Spark connector, SaaS.
-  *(In progress: Singer tap output and the Spark `read_erp` backend done;
-  hosted SaaS remains.)*
+  *(In progress: the Singer tap is done including resumable `STATE`;
+  the Spark `read_erp` backend is done. Hosted SaaS remains out of scope.)*
+- Phase 5 — reconciliation, diffing, COBOL tooling. *(Implemented: `crosscheck`,
+  `diff`, copybook import, COMP-3 packed decimals.)*
 
 ## License
 
