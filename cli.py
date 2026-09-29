@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import sys
 from contextlib import ExitStack, nullcontext
@@ -25,6 +26,7 @@ import yaml
 from core import (
     audit,
     copybook,
+    crosscheck,
     detector,
     generator,
     parallel,
@@ -126,6 +128,47 @@ def build_parser() -> argparse.ArgumentParser:
 
     reg = sub.add_parser("registry", help="validate a schema library directory")
     reg.add_argument("dir", help="directory of *.yaml schemas")
+
+    xc = sub.add_parser(
+        "crosscheck",
+        help="reconcile two or more conversions (sums, counts, key sets)",
+    )
+    xc.add_argument(
+        "inputs",
+        nargs="+",
+        metavar="SCHEMA=INPUT",
+        help="one or more 'schema.yaml=input.txt' pairs (2+ required)",
+    )
+    xc.add_argument(
+        "--key",
+        action="append",
+        default=[],
+        dest="key_fields",
+        metavar="FIELD",
+        help="key column (repeatable); the composite identifies a row",
+    )
+    xc.add_argument(
+        "--sum",
+        action="append",
+        default=[],
+        dest="sum_fields",
+        metavar="FIELD",
+        help="numeric column to total per file (repeatable)",
+    )
+    xc.add_argument(
+        "--checks",
+        default="count",
+        help=(
+            "comma-separated checks: count, unique, sum:<field>, "
+            "missing[:extra] (default: count)"
+        ),
+    )
+    xc.add_argument(
+        "--max-keys",
+        type=int,
+        help="fail instead of indexing more distinct keys than this",
+    )
+    xc.add_argument("--json", action="store_true", help="emit the report as JSON")
 
     cpy = sub.add_parser(
         "copybook",
@@ -370,6 +413,113 @@ def generate_main(args) -> int:
     return EXIT_OK
 
 
+def _parse_checks(raw: str) -> tuple[dict, ...]:
+    out: list[dict] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if token in ("count", "unique"):
+            out.append({"type": token, "name": token})
+        elif token.startswith("sum:"):
+            field = token.split(":", 1)[1].strip()
+            if not field:
+                raise ValueError("sum check requires a field, e.g. sum:amount")
+            out.append({"type": "sum", "field": field, "name": f"sum:{field}"})
+        elif token.startswith("missing"):
+            out.append(
+                {"type": "missing", "name": "missing", "extra": token.endswith("extra")}
+            )
+        else:
+            raise ValueError(
+                f"unknown check {token!r} (use count, unique, sum:<field>, missing)"
+            )
+    if not out:
+        raise ValueError("no checks given")
+    return tuple(out)
+
+
+def _iter_converted(schema_path: str, input_path: str, plugins_dir: str):
+    """Yield validated rows for one file, discarding rows that failed."""
+    sch = schema_mod.load_schema(schema_path)
+    reader = make_reader(sch, input_path, plugins_dir)
+    val = validator.Validator(sch)
+    for lineno, record in reader.records(skip_first=bool(sch.has_header)):
+        result = val.validate_record(lineno, record)
+        if result.ok:
+            yield {fv.name: fv.value for fv in result.fields}
+
+
+def crosscheck_main(args) -> int:
+    if len(args.inputs) < 2:
+        print("crosscheck error: need at least two SCHEMA=INPUT pairs", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        spec = _parse_checks(args.checks)
+    except ValueError as exc:
+        print(f"crosscheck error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    sources: list[tuple[str, crosscheck.FileTotals]] = []
+    for pair in args.inputs:
+        if "=" not in pair:
+            print(
+                f"crosscheck error: expected SCHEMA=INPUT, got {pair!r}",
+                file=sys.stderr,
+            )
+            return EXIT_ERROR
+        schema_path, input_path = pair.split("=", 1)
+        try:
+            sch = schema_mod.load_schema(schema_path)
+        except (OSError, schema_mod.SchemaError) as exc:
+            print(f"crosscheck error: {exc}", file=sys.stderr)
+            return EXIT_SCHEMA
+        label = os.path.basename(input_path)
+        try:
+            rows = _iter_converted(schema_path, input_path, args.plugins_dir)
+            totals = crosscheck.summarize(
+                label,
+                rows,
+                sch,
+                args.key_fields,
+                args.sum_fields,
+                max_keys=args.max_keys,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"crosscheck error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        sources.append((label, totals))
+
+    try:
+        results = crosscheck.run_checks([t for _, t in sources], spec)
+    except crosscheck.CrossCheckError as exc:
+        print(f"crosscheck error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    report = {
+        "files": [t.as_dict() for _, t in sources],
+        "checks": [r.to_dict() for r in results],
+        "ok": all(r.ok for r in results),
+    }
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        for label, totals in sources:
+            print(
+                f"  {label}: rows={totals.rows} keys={len(totals.keys)}"
+                + (
+                    f" sums={ {k: str(v) for k, v in sorted(totals.sums.items())} }"
+                    if totals.sums
+                    else ""
+                )
+            )
+        for r in results:
+            print(f"  [{'OK' if r.ok else 'FAIL'}] {r.message}")
+            for detail in r.details:
+                print(f"         {detail}", file=sys.stderr)
+    return EXIT_OK if report["ok"] else EXIT_VALIDATION
+
+
 def copybook_main(args) -> int:
     try:
         data = copybook.parse_copybook(
@@ -445,6 +595,8 @@ def main(argv: list[str] | None = None) -> int:
         return generate_main(args)
     if args.command == "copybook":
         return copybook_main(args)
+    if args.command == "crosscheck":
+        return crosscheck_main(args)
     if args.command == "registry":
         return registry_main(args)
     if args.command == "serve":

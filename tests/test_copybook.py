@@ -154,9 +154,12 @@ class TestCopybookCli(unittest.TestCase):
             out = os.path.join(tmp, "schema.yaml")
             code = main(
                 [
-                    "copybook", COPYBOOK,
-                    "--output", out,
-                    "--name", "cust_export",
+                    "copybook",
+                    COPYBOOK,
+                    "--output",
+                    out,
+                    "--name",
+                    "cust_export",
                 ]
             )
             self.assertEqual(code, 0)
@@ -171,15 +174,17 @@ class TestCopybookCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             schema = os.path.join(tmp, "schema.yaml")
             out = os.path.join(tmp, "out.json")
-            self.assertEqual(
-                main(["copybook", COPYBOOK, "--output", schema]), 0
-            )
+            self.assertEqual(main(["copybook", COPYBOOK, "--output", schema]), 0)
             code = main(
                 [
-                    "--schema", schema,
-                    "--input", FIXTURE,
-                    "--output", out,
-                    "--format", "json",
+                    "--schema",
+                    schema,
+                    "--input",
+                    FIXTURE,
+                    "--output",
+                    out,
+                    "--format",
+                    "json",
                 ]
             )
             # 1 intentional bad BCD record in the fixture.
@@ -198,8 +203,10 @@ class TestCopybookCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             code = main(
                 [
-                    "copybook", os.path.join(tmp, "nope.cpy"),
-                    "--output", os.path.join(tmp, "s.yaml"),
+                    "copybook",
+                    os.path.join(tmp, "nope.cpy"),
+                    "--output",
+                    os.path.join(tmp, "s.yaml"),
                 ]
             )
             self.assertEqual(code, 1)
