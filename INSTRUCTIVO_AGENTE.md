@@ -233,7 +233,33 @@ Añade 2-3 schemas reales con fixture + test detector: SAP FI BKPF/BSEG, JDE GL 
 
 ## 9. Fuera de alcance (no hacer)
 
-SaaS hosted, marketplace/registry centralizado, UI web completa. `core/webui.py` es solo preview local `127.0.0.1` — no autenticación, no multiusuario.
+SaaS hosted, UI web completa (auth, multiusuario, permisos).
+`core/webui.py` es solo preview local `127.0.0.1` — no autenticación, no
+multiusuario.
 
----
-Generado 2026-09-28. Fuente: código + `docs/CONTEXTO.md` + análisis explorer exp-1. Si algo contradice al código, manda el código.
+### Excepción abierta: registry centralizado
+
+**Este punto NO está cerrado.** El 2026-09-30 el usuario pidió replantearlo
+porque hay una contradicción documentada:
+
+- esta sección decía "marketplace/registry centralizado: no hacer";
+- la tarjeta P1 *Registry público versionado* pedía uno, y se cerró
+  implementando un **índice local** (`core/registry.py`, `registry.yaml`,
+  `registry search|verify`).
+
+El agente resolvió ese choque **por su cuenta, sin preguntar**. La decisión
+está pendiente en Trello, tarjeta **#43 DECISION: registry público**, con tres
+opciones: índice local (A), repo git público (B) o marketplace con API (C).
+
+Mientras no se elija, aplica A: lo que ya existe, sin red. **No amplíes el
+índice a nada remoto sin esa respuesta**, y no vuelvas a dar por descartado un
+camino que el usuario no ha descartado.
+
+### Origen de esta sección
+
+Generado 2026-09-28. Fuente: código + `docs/CONTEXTO.md` + análisis
+explorer exp-1. Si algo contradice al código, manda el código. **Y manda más
+todavía una decisión posterior del usuario, no esta línea:** esta sección la
+escribió una sesión anterior y no es una elección tomada en conversación. Ya
+pasó una vez: el agente usó "por decisión del usuario" para algo que el
+usuario no había dicho. No lo repitas.
