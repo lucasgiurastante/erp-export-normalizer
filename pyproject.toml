@@ -31,6 +31,7 @@ lint = ["ruff>=0.9", "mypy>=1.13"]
 postgres = ["psycopg[binary]>=3.2"]
 dev = [
     "build>=1.2",
+    "hypothesis>=6.100",
     "twine>=5.1",
     "pytest>=8.0",
     "ruff>=0.9",

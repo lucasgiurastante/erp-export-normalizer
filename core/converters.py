@@ -27,15 +27,32 @@ def codec_for(codepage: str) -> str:
 
 
 def decode_field(raw: bytes, field: Field, default_codepage: str) -> str:
+    """Decode one field, turning an undecodable byte into a field error.
+
+    Strict decoding is right, but a bare `UnicodeDecodeError` escaping to
+    the caller would kill a whole run over a 44-byte record that has one bad
+    byte in it. A bad byte is a *field* problem, and the report exists to
+    say which field and where.
+    """
     cp = codec_for(field.codepage or default_codepage)
-    return raw.decode(cp, errors="strict")
+    try:
+        return raw.decode(cp, errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ConversionError(
+            f"byte 0x{raw[exc.start]:02X} at offset {exc.start} is not valid in {cp}"
+        ) from exc
 
 
 def convert_field(raw: bytes, field: Field, default_codepage: str) -> object:
     if field.type == "packed":
         # packed decimal is binary (BCD), never decoded through a codepage
         return convert_packed(raw, field)
-    text = decode_field(raw, field, default_codepage)
+    try:
+        text = decode_field(raw, field, default_codepage)
+    except ConversionError:
+        # the caller prefixes the field name; adding it here would print it
+        # twice in the report
+        raise
     text = normalize_text(text, field)
     if field.mask:
         return mask_value(text, field)
