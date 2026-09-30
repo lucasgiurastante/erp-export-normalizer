@@ -173,6 +173,10 @@ erp-normalize registry search registry.yaml cobol
 erp-normalize --schema core/formats/jde_ar.yaml --input export.txt \
   --output out.json --key id
 
+# an empty extract is almost always a broken feed, not a quiet day
+erp-normalize --schema core/formats/jde_ar.yaml --input export.txt \
+  --output out.json --fail-on-empty
+
 # load straight into Postgres, streaming, amounts as numeric
 pip install 'erp-export-normalizer[postgres]'
 erp-normalize --schema core/formats/jde_ar.yaml --input export.txt \
@@ -373,8 +377,11 @@ backend imports lazily — a JVM is needed only when it is called.
 | 2    | Invalid schema                   |
 | 3    | Validation errors found          |
 
-`crosscheck` and `diff` also exit `3` when the exports do not reconcile, so a
-pipeline can gate on a single code.
+`crosscheck` and `diff` also exit `3` when the exports do not reconcile, and a
+conversion exits `3` with `--fail-on-empty` when the input yields no records,
+so a pipeline can gate on a single code. Without the flag an empty input still
+exits `0`, but the run prints a warning saying whether the file was empty or
+held records that were all rejected.
 
 ## Architecture
 

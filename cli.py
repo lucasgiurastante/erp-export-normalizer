@@ -165,6 +165,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"rows per INSERT batch (default {connectors.BATCH_SIZE})",
     )
     ap.add_argument(
+        "--fail-on-empty",
+        action="store_true",
+        help=(
+            "exit 3 when the input yields no records. In an incremental "
+            "extract, zero rows almost always means a broken feed, not a "
+            "quiet day."
+        ),
+    )
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="validate only, produce no output; print error report",
@@ -466,7 +475,7 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         print(f"plugin error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     try:
-        records = reader.records(skip_first=bool(sch.has_header))
+        records = _counting(reader.records(skip_first=bool(sch.has_header)), args.input)
     except (OSError, ValueError) as exc:
         print(f"input error: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -481,6 +490,47 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         rule_engine,
         dedup_index,
         connection=connection,
+        input_bytes=records.input_bytes,
+    )
+
+
+class _CountingRecords:
+    """Wraps the record stream and remembers whether anything was read.
+
+    `records: 0` in the summary is ambiguous: it looks the same whether the
+    file was empty and whether it held a header that got skipped. Those
+    need different messages, because a pipeline that keeps tripping over a
+    deliberately empty file just turns the check off and goes back to
+    silence.
+
+    The header is skipped *inside* the reader, so counting what comes out of
+    it cannot tell the two cases apart; the file size can.
+    """
+
+    def __init__(self, stream, input_path: str):
+        self._stream = stream
+        try:
+            self.input_bytes = os.path.getsize(input_path)
+        except OSError:
+            self.input_bytes = -1
+
+    def __iter__(self):
+        yield from self._stream
+
+
+def _counting(stream, input_path: str) -> _CountingRecords:
+    return _CountingRecords(stream, input_path)
+
+
+def _empty_reason(input_bytes: int) -> str:
+    if input_bytes == 0:
+        return "input file is empty (0 bytes)"
+    if input_bytes < 0:
+        return "input file has no readable records"
+    return (
+        f"input has {input_bytes} bytes but produced no records: every row "
+        "failed validation, or the file held only a header row that was "
+        "skipped"
     )
 
 
@@ -494,6 +544,7 @@ def _run_conversion(
     rule_engine,
     dedup_index=None,
     connection=None,
+    input_bytes: int = -1,
 ) -> int:
     def serial_results():
         val = validator.Validator(sch)
@@ -599,12 +650,23 @@ def _run_conversion(
             f" | duplicates: {drep.duplicate_count}"
         )
     print(summary_line, file=sys.stderr)
+
+    empty_failure = False
+    if report["total"] == 0:
+        reason = _empty_reason(input_bytes)
+        if args.fail_on_empty:
+            empty_failure = True
+            print(f"  fail-on-empty: {reason}", file=sys.stderr)
+        else:
+            # always visible: the flag decides whether it breaks the
+            # pipeline, the warning says it out loud either way
+            print(f"  warning: no records produced ({reason})", file=sys.stderr)
     for err in report["error_lines"]:
         # P1-3: err["errors"] ya trae "field 'X': <msg> | raw='...'"
         # (raw truncado a 50 chars en validator); prefijo "line N:" intacto
         # para scripts que lo parsean. "details" es estructurado opcional.
         print(f"  line {err['line']}: {'; '.join(err['errors'])}", file=sys.stderr)
-    if violations or dedup_failed or report["errors"]:
+    if violations or dedup_failed or empty_failure or report["errors"]:
         return EXIT_VALIDATION
     return EXIT_OK
 
