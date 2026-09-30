@@ -26,6 +26,7 @@ import yaml
 
 from core import (
     audit,
+    compression,
     connectors,
     copybook,
     crosscheck,
@@ -476,6 +477,10 @@ def _convert_file(ap: argparse.ArgumentParser, args) -> int:
         return EXIT_ERROR
     try:
         records = _counting(reader.records(skip_first=bool(sch.has_header)), args.input)
+    except compression.DecompressionError as exc:
+        # a zip or a broken gzip: a clear message, not a driver traceback
+        print(f"input error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     except (OSError, ValueError) as exc:
         print(f"input error: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -585,6 +590,11 @@ def _run_conversion(
                     )
                 if result.ok and out is not None:
                     out.write(result)
+        except compression.DecompressionError as exc:
+            # a truncated or corrupt container only fails once we read it,
+            # not when we open it
+            print(f"input error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
         except (OSError, ValueError) as exc:
             print(f"input error: {exc}", file=sys.stderr)
             return EXIT_ERROR

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from . import compression
 from .schema import Schema
 
 
@@ -19,12 +20,13 @@ class FixedWidthReader:
 
     def records(self, skip_first: bool = False) -> Iterator[tuple[int, bytes]]:
         """Yield (line number, record bytes). Skips empty lines and, when
-        requested, the first non-empty line (e.g. a delimited header row)."""
-        with open(self.path, "rb") as fh:
-            for lineno, raw in enumerate(fh, start=1):
-                record = raw.rstrip(b"\r\n")
-                if not record:
-                    continue
+        requested, the first non-empty line (e.g. a delimited header row).
+
+        The file is decompressed on the way in if it is a gzip or bzip2
+        container, so a compressed transfer behaves exactly like a plain one.
+        """
+        with compression.open_binary(self.path) as fh:
+            for lineno, record in compression.iter_lines(fh):
                 if skip_first:
                     skip_first = False
                     continue

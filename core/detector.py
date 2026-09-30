@@ -12,6 +12,7 @@ import glob
 import os
 import sys
 
+from . import compression
 from .schema import Schema, SchemaError, load_schema
 from .validator import Validator
 
@@ -44,7 +45,8 @@ class Detector:
     @staticmethod
     def _sample_records(path: str) -> list[bytes]:
         records: list[bytes] = []
-        with open(path, "rb") as fh:
+        # decompressed on the way in, so auto-detection works on a .gz too
+        with compression.open_binary(path) as fh:
             for raw in fh:
                 record = raw.rstrip(b"\r\n")
                 if not record:

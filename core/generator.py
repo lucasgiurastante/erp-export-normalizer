@@ -11,7 +11,7 @@ import decimal
 import os
 import re
 
-from . import converters
+from . import compression, converters
 from .schema import DELIMITED_FORMAT
 
 DELIMITERS = [",", "\t", ";", "|"]
@@ -89,7 +89,7 @@ def generate_schema(
     version: str = "1.0.0",
 ) -> dict:
     """Infer a delimited schema dict from an example file."""
-    with open(path, "rb") as fh:
+    with compression.open_binary(path) as fh:
         raw_lines = []
         for _ in range(sample_lines):
             raw = fh.readline().rstrip(b"\r\n")
