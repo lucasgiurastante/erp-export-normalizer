@@ -1,16 +1,28 @@
-format: sap_fi_bseg
-version: 1.0.0
-description: "SAP FI BSEG line items (document line level: BELNR/BUZEI/HKONT/DMBTR with trailing-sign negatives)"
-record_length: 75
+format: delimited
+version: 1.1.0
+description: >-
+  SAP FI accounting document line items (BSEG) as SAP itself exports them:
+  tab delimited, one line item per row, optional header. Tab delimited is
+  what GUI_DOWNLOAD with filetype='ASC' and SE16N produce; SAP has no
+  canonical fixed-width BSEG export because the layout depends on which
+  fields the selection included. The sign lives in SHKZG (S = debit,
+  H = credit), not in a trailing sign: DMBTR and WRBTR are unsigned.
+  Field names and lengths follow the ECC / S/4HANA data dictionary.
 codepage: cp1252
-table: sap_fi_bseg
+delimiter: "\t"
+has_header: true
+table: bseg_line_items
 fields:
-  - {name: bukrs, start: 0,  length: 4}
-  - {name: belnr, start: 4,  length: 10}
-  - {name: gjahr, start: 14, length: 4}
-  - {name: buzei, start: 18, length: 3}
-  - {name: hkont, start: 21, length: 10}
-  - {name: budat, start: 31, length: 8,  type: date,    format: YYYYMMDD}
-  - {name: dmbtr, start: 39, length: 15, type: decimal, scale: 2, align: right}
-  - {name: waers, start: 54, length: 3}
-  - {name: sgtxt, start: 57, length: 18}
+  - {name: mandt, type: string}                  # client, 3
+  - {name: bukrs, type: string}                  # company code, CHAR 4
+  - {name: belnr, type: string}                  # document number, CHAR 10
+  - {name: gjahr, type: string}                  # fiscal year, NUMC 4
+  - {name: buzei, type: string}                  # line item, NUMC 3
+  - {name: bschl, type: string}                  # posting key, CHAR 2
+  - {name: koart, type: string}                  # account type D/K/S/A/M, CHAR 1
+  - {name: hkont, type: string}                  # G/L account, CHAR 10
+  - {name: shkzg, type: string, enum: [S, H]}    # S = debit, H = credit
+  - {name: dmbtr, type: decimal, scale: 2}       # amount in local currency
+  - {name: wrbtr, type: decimal, scale: 2}       # amount in document currency
+  - {name: waers, type: string}                  # transaction currency, CHAR 3
+  - {name: sgtxt, type: string}                  # item text, CHAR 50

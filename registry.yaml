@@ -57,32 +57,33 @@ schemas:
   version: 1.0.0
   sha256: 1acb3a966a35bcb0abc071d2e56928bca29d8fc4850ff587e7aaafcc5305dfa9
   system: SAP
-  description: Batch header export
+  description: Batch export (fixed width)
   tags:
   - sap
   - batch
   - fixed-width
 - name: sap_fi_document
   path: core/formats/sap_fi_document.yaml
-  version: 1.0.0
-  sha256: 41cf1199af7fd2d782d38e58fd34f6ba1da26bad50798d77dc88d2a24ce7c5a5
-  system: SAP FI
-  description: Invoice/document header (BKPF-like)
+  version: 1.1.0
+  sha256: ddad0af5c925737fb00417d63ed198a9c1da29c8c3e3259fd037210116b9edc0
+  system: SAP
+  description: Accounting document headers, tab delimited as SAP exports it
   tags:
   - sap
   - fi
-  - document
+  - bkpf
+  - tab-delimited
 - name: sap_fi_bseg
   path: core/formats/sap_fi_bseg.yaml
-  version: 1.0.0
-  sha256: 8745a226567bafa796444c831d9ea2221424c852ffd719bdaa4c187366126fa7
-  system: SAP FI
-  description: Invoice line items (BSEG-like)
+  version: 1.1.0
+  sha256: 309191b76a990cb0ab43ec1eabc509c21be33f7f22190ea938e9aa12ecf20138
+  system: SAP
+  description: Accounting document line items (BSEG), tab delimited, sign in SHKZG
   tags:
   - sap
   - fi
   - bseg
-  - line-item
+  - tab-delimited
 - name: cobol_fixed
   path: core/formats/cobol_fixed.yaml
   version: 1.0.0

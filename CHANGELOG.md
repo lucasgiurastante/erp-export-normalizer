@@ -10,11 +10,16 @@ The COBOL and reconciliation round, plus a crash fix the tests found.
 
 ### Added
 
+- **Tab-delimited auto-detection.** The detector scored every delimited schema
+  as 0 because it required a `record_length`, which a delimited format does
+  not have, so no delimited file could ever be auto-detected. Scoring now
+  accepts either, and the ambiguity tie-breaker compares delimiters and column
+  counts for delimited schemas.
 - **COBOL COMP-3 packed decimals.** New `type: packed` decodes mainframe BCD
   fields. `PIC S9(7)V99 COMP-3` is 5 bytes with `scale: 2`. Credit and debit
-  suffixes (`1234.56CR`, `1234.56DB`) are understood, which is how JD Edwards
-  writes signed amounts. EBCDIC overpunch is available per field with
-  `overpunch: true`.
+  suffixes work too, because that is how JD Edwards writes signed amounts:
+  `1234.56CR` is positive, `1234.56DB` negative. EBCDIC overpunch is
+  available per field with `overpunch: true`.
 - **COBOL copybook import.** `erp-normalize copybook FILE.cpy --output
   schema.yaml` turns a copybook's `FD`/`PIC` clauses into a schema. `COMP-3`,
   `COMP`/`BINARY` and implied decimal points are resolved. Only `(n)` repeats a

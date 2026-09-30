@@ -1,16 +1,24 @@
-format: sap_fi_document
-version: 1.0.0
-description: "SAP FI document export (BKPF header + BSEG line items) - example schema"
-record_length: 78
+format: delimited
+version: 1.1.0
+description: >-
+  SAP FI accounting document header (BKPF) as SAP itself exports it: tab
+  delimited, one document per row, optional header. Same rationale as the
+  BSEG schema, with the same caveat: the layout depends on the field
+  selection, so this is one common selection, not a canonical SAP format.
+  Field names and lengths follow the ECC / S/4HANA data dictionary.
 codepage: cp1252
-table: sap_fi_document
+delimiter: "\t"
+has_header: true
+table: bkpf_headers
 fields:
-  - {name: company,  start: 0,  length: 4}
-  - {name: document, start: 4,  length: 10}
-  - {name: year,     start: 14, length: 4}
-  - {name: date,     start: 18, length: 8,  type: date,    format: YYYYMMDD}
-  - {name: account,  start: 26, length: 10}
-  - {name: postkey,  start: 36, length: 2}
-  - {name: amount,   start: 38, length: 15, type: decimal, scale: 2, align: right}
-  - {name: currency, start: 53, length: 3}
-  - {name: text,     start: 56, length: 22}
+  - {name: mandt, type: string}                  # client, 3
+  - {name: bukrs, type: string}                  # company code, CHAR 4
+  - {name: belnr, type: string}                  # document number, CHAR 10
+  - {name: gjahr, type: string}                  # fiscal year, NUMC 4
+  - {name: blart, type: string}                  # document type, CHAR 2
+  - {name: budat, type: date, format: YYYYMMDD}  # posting date
+  - {name: bldat, type: date, format: YYYYMMDD}  # document date
+  - {name: monat, type: string}                  # period, NUMC 2
+  - {name: usnam, type: string}                  # user, CHAR 12
+  - {name: bktxt, type: string}                  # document header text
+  - {name: waers, type: string}                  # currency, CHAR 3

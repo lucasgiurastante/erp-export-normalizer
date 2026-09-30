@@ -32,16 +32,29 @@ def rec_sap_fi(
     currency: str,
     text: str,
 ) -> bytes:
+    """One BKPF header row, tab delimited.
+
+    SAP's own export is tab delimited, so the fixed-width layout these
+    schemas used to have was not something SAP produces.
+    """
     return (
-        pad(company, 4)
-        + pad(document, 10)
-        + pad(year, 4)
-        + pad(date, 8)
-        + pad(account, 10)
-        + pad(postkey, 2)
-        + amount.rjust(15).encode("ascii")
-        + pad(currency, 3)
-        + pad(text, 22)
+        b"\t".join(
+            pad(v, w)
+            for v, w in (
+                ("100", 3),
+                (company, 4),
+                (document, 10),
+                (year, 4),
+                (postkey, 2),
+                (date, 8),
+                (date, 8),
+                (year[2:] + "01", 2),
+                ("CONSULTANT", 12),
+                (text, 25),
+                (currency, 3),
+            )
+        )
+        + b"\n"
     )
 
 
@@ -114,6 +127,24 @@ JDE_GL_OK = rec_jde_gl(
 COBOL_OK = rec_cobol("000001", "CUSTOMER NAME HERE", "000012345600", "20250401", "A")
 
 
+SAP_BSEG_HEADER = (
+    b"MANDT\tBUKRS\tBELNR\tGJAHR\tBUZEI\tBSCHL\tKOART\tHKONT\tSHKZG"
+    b"\tDMBTR\tWRBTR\tWAERS\tSGTXT\n"
+)
+SAP_FI_HEADER = (
+    b"MANDT\tBUKRS\tBELNR\tGJAHR\tBLART\tBUDAT\tBLDAT\tMONAT\tUSNAM\tBKTXT\tWAERS\n"
+)
+
+
+def _header_for(fmt: str) -> bytes:
+    """SAP's delimited schemas have `has_header: true`; the rest do not."""
+    if fmt == "sap_fi_bseg" or fmt == "":
+        return SAP_BSEG_HEADER
+    if fmt == "sap_fi_document":
+        return SAP_FI_HEADER
+    return b""
+
+
 class TestBuiltinSchemas(unittest.TestCase):
     def test_all_schemas_load(self):
         for name in (
@@ -133,7 +164,7 @@ class TestBuiltinSchemas(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             in_path = os.path.join(tmp, "input.txt")
             with open(in_path, "wb") as fh:
-                fh.write(record + b"\n")
+                fh.write(_header_for(fmt) + record + b"\n")
             out_path = os.path.join(tmp, "out.json")
             code = main(
                 [
@@ -153,9 +184,12 @@ class TestBuiltinSchemas(unittest.TestCase):
 
     def test_sap_fi_converts(self):
         rows = self._convert("sap_fi_document", SAP_FI_OK)
-        self.assertEqual(rows[0]["company"], "1000")
-        self.assertEqual(rows[0]["date"], "2025-01-15")
-        self.assertEqual(rows[0]["amount"], 1234567890123.45)
+        # field names follow the SAP data dictionary, not invented names
+        self.assertEqual(rows[0]["bukrs"], "1000")
+        self.assertEqual(rows[0]["belnr"], "0100000000")
+        self.assertEqual(rows[0]["budat"], "2025-01-15")
+        self.assertEqual(rows[0]["blart"], "40")
+        self.assertEqual(rows[0]["waers"], "EUR")
 
     def test_jde_ap_converts(self):
         rows = self._convert("jde_ap", JDE_AP_OK)
@@ -256,17 +290,40 @@ def rec_sap_bseg(
     dmbtr: str,
     waers: str,
     sgtxt: str,
+    bschl: str = "40",
+    koart: str = "S",
+    shkzg: str = "S",
 ) -> bytes:
+    """One BSEG line item, tab delimited, with the real sign column.
+
+    SAP keeps the sign in SHKZG (S = debit, H = credit) and stores DMBTR
+    unsigned. The old fixture used a trailing minus in the amount, which is
+    a mainframe convention SAP does not use.
+    """
     return (
-        pad(bukrs, 4)
-        + pad(belnr, 10)
-        + pad(gjahr, 4)
-        + pad(buzei, 3)
-        + pad(hkont, 10)
-        + pad(budat, 8)
-        + dmbtr.rjust(15).encode("ascii")
+        b"\t".join(
+            pad(v, w)
+            for v, w in (
+                ("100", 3),
+                (bukrs, 4),
+                (belnr, 10),
+                (gjahr, 4),
+                (buzei, 3),
+                (bschl, 2),
+                (koart, 1),
+                (hkont, 10),
+                (shkzg, 1),
+            )
+        )
+        + b"\t"
+        + dmbtr[:15].rjust(15).encode("ascii")
+        + b"\t"
+        + dmbtr[:15].rjust(15).encode("ascii")
+        + b"\t"
         + pad(waers, 3)
-        + pad(sgtxt, 18)
+        + b"\t"
+        + pad(sgtxt, 50)
+        + b"\n"
     )
 
 
@@ -299,20 +356,23 @@ SAP_BSEG_OK = rec_sap_bseg(
     "001",
     "4000000000",
     "20250115",
-    "000000012345600",
+    "0000012345600",  # DMBTR CURR(13,2): 13 digits, implied decimal
     "EUR",
     "CUSTOMER PAYMENT",
 )
-SAP_BSEG_TRAIL = rec_sap_bseg(
+SAP_BSEG_CREDIT = rec_sap_bseg(
     "1000",
     "0100000001",
     "2025",
     "002",
     "5000000000",
     "20250115",
-    "00000001234560-",
+    "0000001234560",  # 12345.60
     "EUR",
     "DISCOUNT TAKEN",
+    bschl="50",
+    koart="K",
+    shkzg="H",
 )
 JDE_GL2_OK = rec_jde_gl2(
     "00001",
@@ -341,7 +401,7 @@ class TestP12NewFormats(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             in_path = os.path.join(tmp, "input.txt")
             with open(in_path, "wb") as fh:
-                fh.write(record + b"\n")
+                fh.write(_header_for(fmt) + record + b"\n")
             out_path = os.path.join(tmp, "out.json")
             code = main(
                 [
@@ -363,7 +423,7 @@ class TestP12NewFormats(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             in_path = os.path.join(tmp, "input.txt")
             with open(in_path, "wb") as fh:
-                fh.write(record + b"\n")
+                fh.write(_header_for("") + record + b"\n")
             found = detector_mod.Detector(FORMATS_DIR).detect(in_path)
             return os.path.basename(found.source_path) if found else None
 
@@ -372,10 +432,18 @@ class TestP12NewFormats(unittest.TestCase):
         self.assertEqual(rows[0]["belnr"], "0100000001")
         self.assertEqual(rows[0]["buzei"], "001")
         self.assertEqual(rows[0]["hkont"], "4000000000")
-        self.assertEqual(rows[0]["budat"], "2025-01-15")
         self.assertEqual(rows[0]["dmbtr"], 123456.0)
-        rows_trail = self._convert("sap_fi_bseg", SAP_BSEG_TRAIL)
-        self.assertEqual(rows_trail[0]["dmbtr"], -12345.6)
+        self.assertEqual(rows[0]["shkzg"], "S")
+        # BSEG has no posting date: BUDAT lives on the BKPF header, which is
+        # exactly why the two schemas are separate.
+        self.assertNotIn("budat", rows[0])
+
+    def test_sap_fi_bseg_credit_line(self):
+        """SAP stores the sign in SHKZG, never in a trailing minus."""
+        rows = self._convert("sap_fi_bseg", SAP_BSEG_CREDIT)
+        self.assertEqual(rows[0]["shkzg"], "H")
+        # the amount itself stays positive
+        self.assertEqual(rows[0]["dmbtr"], 12345.60)
 
     def test_jde_gl_distinct_converts(self):
         rows = self._convert("jde_gl_distinct", JDE_GL2_OK)

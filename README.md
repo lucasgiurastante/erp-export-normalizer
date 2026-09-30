@@ -78,6 +78,13 @@ two exports, down to the field.
 `generate-schema` to infer one from an example file, and a versioned registry
 index with checksums you can search and verify offline.
 
+The SAP ones follow what SAP actually exports. BSEG line items and BKPF
+headers are tab delimited, because that is what `GUI_DOWNLOAD` and `SE16N`
+produce, and SAP has no canonical fixed-width export of either table. The sign
+lives in `SHKZG` (S = debit, H = credit) and the amounts stay unsigned, which
+is how the data dictionary stores them. `sap_batch` is the only fixed-width
+SAP schema, and it says so in its description.
+
 **DataFrames and the web.** `read_erp()` loads straight into Pandas, Polars or
 Spark. `serve` starts a local interface for schema generation and conversion
 preview, stdlib only, on `127.0.0.1`.

@@ -58,7 +58,15 @@ class Detector:
 
     @staticmethod
     def _score(schema: Schema, records: list[bytes]) -> int:
-        if schema.record_length is None:
+        """Score a schema against sampled records.
+
+        A delimited schema has no `record_length`, and scoring it out just
+        for that meant auto-detection could never pick one: every delimited
+        file scored 0 and lost to whatever fixed-width schema happened to
+        match. The tie-breaker has to consider the delimiter too, or two
+        delimited schemas with the same column count look equally good.
+        """
+        if schema.record_length is None and not schema.delimiter:
             return 0
         val = Validator(schema)
         total = 0
@@ -68,6 +76,15 @@ class Detector:
             if result.ok:
                 total += PERFECT_RECORD_BONUS + len(schema.fields)
         return total
+
+    @staticmethod
+    def _same_shape(a: Schema, b: Schema) -> bool:
+        """True when two schemas are indistinguishable on a raw byte line."""
+        if a.record_length is not None and b.record_length is not None:
+            return a.record_length == b.record_length
+        if a.delimiter and b.delimiter:
+            return a.delimiter == b.delimiter and len(a.fields) == len(b.fields)
+        return False
 
     def detect(self, path: str) -> Detection | None:
         records = self._sample_records(path)
@@ -87,10 +104,7 @@ class Detector:
         if rest:
             second_score, _, second_schema = rest[0]
             if second_score > 0 and best_score - second_score < AMBIGUITY_MARGIN:
-                if (
-                    best_schema.record_length is not None
-                    and best_schema.record_length == second_schema.record_length
-                ):
+                if self._same_shape(best_schema, second_schema):
                     print(
                         "ambiguous match, pass --schema",
                         file=sys.stderr,
