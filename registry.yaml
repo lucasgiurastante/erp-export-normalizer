@@ -1,5 +1,5 @@
 registry: 1
-updated: '2026-09-29'
+updated: '2026-09-30'
 schemas:
 - name: jde_ar
   path: core/formats/jde_ar.yaml
@@ -41,6 +41,17 @@ schemas:
   - jde
   - gl
   - distinct
+- name: jde_ar_crdb
+  path: core/formats/jde_ar_crdb.yaml
+  version: 1.0.0
+  sha256: a23363fb21a91c6cda5506e8262675ca3d76c4b909f1175114ed0e84777837a2
+  system: JD Edwards
+  description: General Ledger with CR/DB credit-debit signs
+  tags:
+  - jde
+  - gl
+  - crdb
+  - credit-debit
 - name: sap_batch
   path: core/formats/sap_batch.yaml
   version: 1.0.0

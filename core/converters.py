@@ -160,14 +160,51 @@ def convert_date(text: str, fmt: str | None) -> str:
     return dt.isoformat()
 
 
+# Mainframe credit/debit markers, the two-letter form that follows the digits:
+# "1234.56CR" is a credit (adds), "1234.56DB" a debit (subtracts). A number
+# can never end in these, so recognising them cannot corrupt valid data.
+CREDIT_SUFFIX = "CR"
+DEBIT_SUFFIX = "DB"
+
+# EBCDIC overpunch, the one-letter form where the sign and the last digit
+# share a position: after decoding, "A".."I" are +0..+9 and "J".."R" are
+# -0..-9. Unlike CR/DB this can collide with a legitimate trailing letter,
+# so it is opt-in per field.
+OVERPUNCH_POSITIVE = "ABCDEFGHI"
+OVERPUNCH_NEGATIVE = "JKLMNOPQR"
+
+
+def _strip_overpunch(stripped: str) -> tuple[str, bool]:
+    """Split an overpunched last digit into `(digits, negative)`."""
+    last = stripped[-1].upper()
+    if last in OVERPUNCH_POSITIVE:
+        return stripped[:-1] + str(OVERPUNCH_POSITIVE.index(last)), False
+    if last in OVERPUNCH_NEGATIVE:
+        return stripped[:-1] + str(OVERPUNCH_NEGATIVE.index(last)), True
+    return stripped, False
+
+
 def convert_decimal(text: str, field: Field) -> decimal.Decimal:
     stripped = text.strip()
     if not stripped:
         raise ConversionError("empty decimal")
     negative = False
-    if stripped.endswith("-"):  # trailing mainframe-style sign: "12345-"
+    upper = stripped.upper()
+
+    if upper.endswith(CREDIT_SUFFIX):  # "1234.56CR"
+        stripped = stripped[: -len(CREDIT_SUFFIX)]
+        negative = False
+    elif upper.endswith(DEBIT_SUFFIX):  # "1234.56DB"
+        stripped = stripped[: -len(DEBIT_SUFFIX)]
+        negative = True
+    elif stripped.endswith("-"):  # trailing sign: "12345-"
         negative = True
         stripped = stripped[:-1]
+    elif field.overpunch:
+        # checked last: "CR" also ends in "R", and CR is not overpunch
+        stripped, overpunched_negative = _strip_overpunch(stripped)
+        negative = overpunched_negative
+
     try:
         value = decimal.Decimal(stripped)
     except (decimal.InvalidOperation, ValueError) as exc:

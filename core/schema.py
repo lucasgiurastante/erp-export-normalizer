@@ -43,6 +43,9 @@ class Field:
     scale: int = 0
     align: str = "left"
     codepage: str | None = None
+    # EBCDIC overpunch: the sign shares the last digit position. Opt-in
+    # because a trailing letter can be legitimate data; CR/DB is always on.
+    overpunch: bool = False
     # text normalization, applied after decoding and before conversion
     trim: bool = False
     case: str | None = None
@@ -246,6 +249,15 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
             )
         if raw.get("trim") is not None and not isinstance(raw.get("trim"), bool):
             errors.append(f"fields[{i}] '{name}': trim must be a boolean")
+        if raw.get("overpunch") is not None and not isinstance(
+            raw.get("overpunch"), bool
+        ):
+            errors.append(f"fields[{i}] '{name}': overpunch must be a boolean")
+        if raw.get("overpunch") and ftype != "decimal":
+            errors.append(
+                f"fields[{i}] '{name}': overpunch only applies to "
+                f"type decimal, not {ftype}"
+            )
         mask = raw.get("mask")
         if mask is not None and mask not in SUPPORTED_MASKS:
             errors.append(
@@ -277,6 +289,7 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
                 scale=scale,
                 align=align,
                 codepage=raw.get("codepage"),
+                overpunch=raw.get("overpunch", False),
                 trim=raw.get("trim", False),
                 case=raw.get("case"),
                 normalize=raw.get("normalize"),
