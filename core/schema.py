@@ -18,6 +18,8 @@ from typing import Any
 
 import yaml
 
+from . import constraints
+
 SUPPORTED_TYPES = {"string", "date", "decimal", "packed"}
 SUPPORTED_CASES = {"upper", "lower", "title"}
 SUPPORTED_NORMALIZATIONS = {"NFC", "NFD", "NFKC", "NFKD"}
@@ -46,6 +48,12 @@ class Field:
     # EBCDIC overpunch: the sign shares the last digit position. Opt-in
     # because a trailing letter can be legitimate data; CR/DB is always on.
     overpunch: bool = False
+    # per-field constraints, evaluated after conversion
+    required: bool = False
+    minimum: object = None
+    maximum: object = None
+    pattern: str | None = None
+    allowed: tuple | None = None
     # text normalization, applied after decoding and before conversion
     trim: bool = False
     case: str | None = None
@@ -279,24 +287,34 @@ def build_schema(data: dict[str, Any], source_path: str | None = None) -> Schema
                 f"type string, not {ftype}"
             )
 
-        fields.append(
-            Field(
-                name=name,
-                start=start,
-                length=length,
-                type=ftype,
-                format=raw.get("format"),
-                scale=scale,
-                align=align,
-                codepage=raw.get("codepage"),
-                overpunch=raw.get("overpunch", False),
-                trim=raw.get("trim", False),
-                case=raw.get("case"),
-                normalize=raw.get("normalize"),
-                mask=raw.get("mask"),
-                mask_keep=int(raw.get("mask_keep", 0)),
-            )
+        field = Field(
+            name=name,
+            start=start,
+            length=length,
+            type=ftype,
+            format=raw.get("format"),
+            scale=scale,
+            align=align,
+            codepage=raw.get("codepage"),
+            overpunch=raw.get("overpunch", False),
+            trim=raw.get("trim", False),
+            case=raw.get("case"),
+            normalize=raw.get("normalize"),
+            mask=raw.get("mask"),
+            mask_keep=int(raw.get("mask_keep", 0)),
+            required=raw.get("required", False),
+            minimum=raw.get("min"),
+            maximum=raw.get("max"),
+            pattern=raw.get("pattern"),
+            allowed=(tuple(raw["enum"]) if raw.get("enum") is not None else None),
         )
+        # A constraint that cannot be honoured is a configuration error, and
+        # saying so now beats discovering it on the first row of a nightly job.
+        try:
+            constraints.validate_spec(field)
+        except constraints.ConstraintError as exc:
+            errors.append(f"fields[{i}] '{name}': {exc}")
+        fields.append(field)
 
     if not is_delimited:
         for a_i, a in enumerate(fields):

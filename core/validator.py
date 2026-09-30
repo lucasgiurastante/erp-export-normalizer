@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import converters
+from . import constraints, converters
 from .schema import Schema
 
 
@@ -125,6 +125,17 @@ class Validator:
                     }
                 )
                 value = None
+            # Constraints run on the converted value, and before any masking:
+            # a masked field would otherwise answer `required` with `***`.
+            for problem in constraints.check(f, value, raw_text):
+                errors.append(_field_error(f.name, problem, raw_text))
+                details.append(
+                    {
+                        "field": f.name,
+                        "message": problem,
+                        "raw": _truncate_raw(raw_text),
+                    }
+                )
             fields.append(FieldValue(name=f.name, value=value, raw=raw_text))
         return RecordResult(
             line=line, ok=not errors, errors=errors, fields=fields, details=details
