@@ -290,7 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="count",
         help=(
             "comma-separated checks: count, unique, sum:<field>, "
-            "missing[:extra] (default: count)"
+            "references:<field>, missing[:extra] (default: count)"
         ),
     )
     xc.add_argument(
@@ -812,13 +812,23 @@ def _parse_checks(raw: str) -> tuple[dict, ...]:
             if not field:
                 raise ValueError("sum check requires a field, e.g. sum:amount")
             out.append({"type": "sum", "field": field, "name": f"sum:{field}"})
+        elif token.startswith("references"):
+            field = token.split(":", 1)[1].strip() if ":" in token else ""
+            if not field:
+                raise ValueError(
+                    "references check requires a field, e.g. references:customer_id"
+                )
+            out.append(
+                {"type": "references", "field": field, "name": f"references:{field}"}
+            )
         elif token.startswith("missing"):
             out.append(
                 {"type": "missing", "name": "missing", "extra": token.endswith("extra")}
             )
         else:
             raise ValueError(
-                f"unknown check {token!r} (use count, unique, sum:<field>, missing)"
+                f"unknown check {token!r} (use count, unique, sum:<field>, "
+                "references:<field>, missing)"
             )
     if not out:
         raise ValueError("no checks given")
@@ -846,6 +856,8 @@ def crosscheck_main(args) -> int:
         print(f"crosscheck error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    reference_fields = [c.get("field") for c in spec if c.get("type") == "references"]
+    needs_reference_field = reference_fields[0] if reference_fields else None
     sources: list[tuple[str, crosscheck.FileTotals]] = []
     for pair in args.inputs:
         if "=" not in pair:
@@ -870,6 +882,9 @@ def crosscheck_main(args) -> int:
                 args.key_fields,
                 args.sum_fields,
                 max_keys=args.max_keys,
+                # the referential check indexes the foreign key; every
+                # other check works on the key index alone
+                foreign_field=needs_reference_field,
             )
         except (OSError, ValueError) as exc:
             print(f"crosscheck error: {exc}", file=sys.stderr)

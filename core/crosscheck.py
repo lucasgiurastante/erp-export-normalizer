@@ -26,6 +26,8 @@ from collections.abc import Iterable, Iterator
 
 from .schema import Schema
 
+DEFAULT_SAMPLE_LIMIT = 20
+
 
 class CrossCheckError(ValueError):
     """The cross-check specification is invalid."""
@@ -53,13 +55,24 @@ class CheckResult:
 
 @dataclasses.dataclass
 class FileTotals:
-    """Per-file accumulators. Constant memory apart from the key index."""
+    """Per-file accumulators. Constant memory apart from the key index.
+
+    `foreign` is the set of foreign-key values, populated only when a check
+    genuinely needs it. It holds keys, not whole rows: the referential check
+    never looks at anything else, and keeping records would make memory grow
+    with the row count instead of the distinct keys.
+    """
 
     label: str
     rows: int = 0
     sums: dict[str, decimal.Decimal] = dataclasses.field(default_factory=dict)
     keys: set[str] = dataclasses.field(default_factory=set)
     duplicates: list[str] = dataclasses.field(default_factory=list)
+    foreign: set[str] | None = None
+    foreign_repeats: list[str] = dataclasses.field(default_factory=list)
+    foreign_rows: int = 0
+    foreign_field: str = ""
+    fields: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         return {
@@ -99,10 +112,23 @@ def summarize(
     key_fields: list[str],
     sum_fields: list[str],
     max_keys: int | None = None,
-    sample_limit: int = 20,
+    sample_limit: int = DEFAULT_SAMPLE_LIMIT,
+    foreign_field: str | None = None,
 ) -> FileTotals:
-    """Stream one conversion into per-file totals, bounded by `max_keys`."""
-    totals = FileTotals(label)
+    """Stream one conversion into per-file totals, bounded by `max_keys`.
+
+    `foreign_field` additionally indexes the foreign-key column, which is
+    what the referential check consumes. It is opt-in because it costs an
+    extra set per run, and no other check needs it.
+    """
+    totals = FileTotals(label, fields=tuple(f.name for f in schema.fields))
+    if foreign_field is not None:
+        if foreign_field not in totals.fields:
+            raise CrossCheckError(
+                f"{label}: references field '{foreign_field}' not in schema"
+            )
+        totals.foreign = set()
+        totals.foreign_field = foreign_field
     names = {f.name for f in schema.fields}
     for name in key_fields:
         if name not in names:
@@ -113,6 +139,14 @@ def summarize(
 
     for row in rows:
         totals.rows += 1
+        if totals.foreign is not None:
+            key = _foreign_key(row, totals.foreign_field)
+            totals.foreign_rows += 1
+            if key in totals.foreign:
+                if len(totals.foreign_repeats) < sample_limit:
+                    totals.foreign_repeats.append(key)
+            else:
+                totals.foreign.add(key)
         key = _key_of(row, key_fields, label)
         if key in totals.keys:
             if len(totals.duplicates) < sample_limit:
@@ -136,8 +170,31 @@ def _find(totals: list[FileTotals], field: str) -> list[tuple[str, decimal.Decim
     return [(t.label, t.sums.get(field, decimal.Decimal(0))) for t in totals]
 
 
+EMPTY_KEY = "\x00empty"
+
+
+def _foreign_key(row: dict, field: str) -> str:
+    """Text of a foreign key, with blanks called out rather than ignored.
+
+    A blank key is itself an orphan, not a key to skip quietly: a detail row
+    pointing at nothing is a real defect in an ERP extract.
+    """
+    if field not in row:
+        raise CrossCheckError(f"key field '{field}' missing from row")
+    value = row[field]
+    if value is None or str(value).strip() == "":
+        return EMPTY_KEY
+    return str(value).strip()
+
+
+def _show_key(key: str) -> str:
+    return "(empty)" if key == EMPTY_KEY else repr(key)
+
+
 def run_checks(
-    totals: list[FileTotals], spec: tuple[dict, ...] | None
+    totals: list[FileTotals],
+    spec: tuple[dict, ...] | None,
+    sample_limit: int = DEFAULT_SAMPLE_LIMIT,
 ) -> list[CheckResult]:
     """Apply the reconciliation checks to already-summarised files."""
     results: list[CheckResult] = []
@@ -219,6 +276,63 @@ def run_checks(
                 f"'{reference.label}': " + "; ".join(detail)
             )
             results.append(CheckResult(name, "missing", ok, message, detail))
+        elif kind == "references":
+            if len(totals) < 2:
+                raise CrossCheckError(
+                    f"checks[{i}]: 'references' needs a master file and at "
+                    "least one detail file"
+                )
+            field = check.get("field")
+            if not field:
+                raise CrossCheckError(
+                    f"checks[{i}]: 'references' requires 'field' (the "
+                    "foreign key column)"
+                )
+            if not any(field in t.fields for t in totals):
+                raise CrossCheckError(
+                    f"checks[{i}]: references field {field!r} is not in any "
+                    "of the schemas"
+                )
+            if any(t.foreign is None for t in totals):
+                raise CrossCheckError(
+                    f"checks[{i}]: 'references' needs the foreign key "
+                    f"'{field}' indexed while summarising"
+                )
+            master, details = totals[0], totals[1:]
+            known = master.foreign or set()
+
+            orphans: list[str] = []
+            orphan_count = 0
+            for total in details:
+                for key in total.foreign or ():
+                    if key not in known:
+                        orphan_count += 1
+                        if len(orphans) < sample_limit:
+                            orphans.append(key)
+
+            ok = orphan_count == 0
+            ref_detail: list[str] = []
+            if orphan_count:
+                ref_detail.append(
+                    f"{orphan_count} distinct {field} value(s) in the detail "
+                    f"files are not in '{master.label}'"
+                )
+                ref_detail.extend(
+                    f"    orphan {field}={_show_key(o)}" for o in sorted(set(orphans))
+                )
+            if master.foreign_repeats:
+                ref_detail.append(
+                    f"'{master.label}' repeats {field} "
+                    f"{len(master.foreign_repeats)} time(s); a non-unique "
+                    "master cannot enforce a one-to-one key"
+                )
+            message = (
+                f"every {field} in the detail files exists in '{master.label}'"
+                if ok
+                else f"referential integrity failed: {orphan_count} orphan "
+                f"{field} value(s) against '{master.label}'"
+            )
+            results.append(CheckResult(name, "references", ok, message, ref_detail))
         else:
             raise CrossCheckError(f"checks[{i}]: unsupported type {kind!r}")
     return results
