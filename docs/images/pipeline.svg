@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 250" width="900" height="250"
+     role="img" aria-labelledby="t2 d2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <title id="t2">Conversion pipeline: read, validate, write, with errors collected on the way</title>
+  <desc id="d2">A fixed-width file is read line by line with constant memory, each record
+  is validated against a schema, valid records are streamed to the chosen writer, and
+  invalid ones are collected into a report. Every worker configuration produces the same
+  bytes.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+            markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <style>
+    .bg   { fill: #ffffff; }
+    .box  { stroke-width: 1.5; rx: 8; }
+    .t    { font-size: 12px; font-weight: 600; fill: #ffffff; text-anchor: middle; }
+    .s    { font-size: 10.5px; fill: #6b6b6b; text-anchor: middle; }
+    .flow { stroke: #6b7280; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+    .lab  { font-size: 10.5px; fill: #444444; text-anchor: middle; }
+    .note { font-size: 11px; fill: #444444; }
+    @media (prefers-color-scheme: dark) {
+      .bg   { fill: #0d1117; }
+      .s    { fill: #9198a1; }
+      .lab  { fill: #b0b8c0; }
+      .note { fill: #b0b8c0; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="900" height="250"/>
+
+  <!-- 1. input -->
+  <rect class="box" x="30"  y="80" width="140" height="56" fill="#374151" stroke="#374151"/>
+  <text class="t" x="100" y="105">fixed-width file</text>
+  <text class="s"  x="100" y="123">.gz and .bz2 opened</text>
+
+  <!-- 2. read -->
+  <rect class="box" x="215" y="80" width="150" height="56" fill="#0e7490" stroke="#0e7490"/>
+  <text class="t" x="290" y="105">read one line</text>
+  <text class="s"  x="290" y="123">memory stays flat</text>
+
+  <!-- 3. validate -->
+  <rect class="box" x="410" y="80" width="160" height="56" fill="#7c3aed" stroke="#7c3aed"/>
+  <text class="t" x="490" y="105">validate</text>
+  <text class="s"  x="490" y="123">convert, then constrain</text>
+
+  <!-- 4. write -->
+  <rect class="box" x="615" y="52" width="150" height="56" fill="#166534" stroke="#166534"/>
+  <text class="t" x="690" y="77">write</text>
+  <text class="s"  x="690" y="95">json csv parquet</text>
+  <text class="s"  x="690" y="108">postgres singer</text>
+
+  <!-- 5. report -->
+  <rect class="box" x="615" y="130" width="150" height="56" fill="#b91c1c" stroke="#b91c1c"/>
+  <text class="t" x="690" y="155">error report</text>
+  <text class="s"  x="690" y="173">line, field, raw</text>
+
+  <path class="flow" d="M 170 108 L 212 108"/>
+  <path class="flow" d="M 365 108 L 407 108"/>
+  <path class="flow" d="M 570 100 L 612 84"/>
+  <path class="flow" d="M 570 116 L 612 152"/>
+  <text class="lab" x="590" y="70">ok</text>
+  <text class="lab" x="592" y="192">fail</text>
+
+  <text class="note" x="30" y="30">one pass, no buffering. The reader never holds more than a single
+    record, so a 5 GB file costs the same memory as a 5 KB one.</text>
+  <text class="note" x="30" y="222">Same input and same schema produce the same bytes on every run, with any
+    number of workers. That is what makes the output auditable.</text>
+</svg>

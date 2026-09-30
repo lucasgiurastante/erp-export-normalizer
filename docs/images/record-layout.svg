@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300"
+     role="img" aria-labelledby="title desc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <title id="title">A 44-byte JD Edwards record sliced into fields by byte offset</title>
+  <desc id="desc">The record AR1001, INVOICE, 20240815, 1234.56, USD split into five
+  fields by byte offset: id at 0 length 10, type at 10 length 15, date at 25 length 8,
+  amount at 33 length 8, currency at 41 length 3. Total 44 bytes, no separators.</desc>
+
+  <style>
+    .bg     { fill: #ffffff; }
+    .lbl    { font-size: 13px; fill: #1a1a1a; }
+    .off    { font-size: 10px; fill: #6b6b6b; }
+    .name   { font-size: 12px; font-weight: 600; }
+    .val    { font-size: 12px; fill: #ffffff; }
+    .note   { font-size: 11px; fill: #444444; }
+    .sep    { stroke: #0f172a; stroke-width: 2; }
+    .ticks  { stroke: #999999; stroke-width: 1; }
+    @media (prefers-color-scheme: dark) {
+      .bg   { fill: #0d1117; }
+      .lbl  { fill: #e6edf3; }
+      .off  { fill: #9198a1; }
+      .note { fill: #b0b8c0; }
+      .sep  { stroke: #e6edf3; }
+      .ticks{ stroke: #6e7681; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="900" height="300"/>
+
+  <!-- the record, one block per field, drawn to scale (1 char = 8.7px) -->
+  <g transform="translate(60,96)">
+    <text class="lbl" x="0" y="-26">one record, 44 bytes, read as cp850</text>
+
+    <rect x="0"   y="0" width="87"  height="34" fill="#0e7490"/>
+    <rect x="87"  y="0" width="131" height="34" fill="#7c3aed"/>
+    <rect x="218" y="0" width="70"  height="34" fill="#b45309"/>
+    <rect x="288" y="0" width="70"  height="34" fill="#166534"/>
+    <rect x="358" y="0" width="26"  height="34" fill="#9f1239"/>
+
+    <text class="val" x="8"  y="22">AR1001</text>
+    <text class="val" x="95" y="22">INVOICE</text>
+    <text class="val" x="226" y="22">20240815</text>
+    <text class="val" x="296" y="22">1234.56</text>
+    <text class="val" x="360" y="22">USD</text>
+
+    <!-- byte ruler -->
+    <g class="ticks">
+      <line x1="0"   y1="38" x2="0"   y2="44"/>
+      <line x1="87"  y1="38" x2="87"  y2="44"/>
+      <line x1="218" y1="38" x2="218" y2="44"/>
+      <line x1="288" y1="38" x2="288" y2="44"/>
+      <line x1="358" y1="38" x2="358" y2="44"/>
+      <line x1="384" y1="38" x2="384" y2="44"/>
+    </g>
+    <text class="off" x="-2"  y="56">0</text>
+    <text class="off" x="84"  y="56">10</text>
+    <text class="off" x="215" y="56">25</text>
+    <text class="off" x="285" y="56">33</text>
+    <text class="off" x="355" y="56">41</text>
+    <text class="off" x="380" y="56">44</text>
+  </g>
+
+  <!-- field table, aligned under the record -->
+  <g transform="translate(60,206)">
+    <text class="name" fill="#0e7490">id</text>
+    <text class="off" x="90" y="0">start 0, length 10</text>
+
+    <text class="name" fill="#7c3aed" y="22">type</text>
+    <text class="off" x="90" y="22">start 10, length 15</text>
+
+    <text class="name" fill="#b45309" y="44">date</text>
+    <text class="off" x="90" y="44">start 25, length 8, YYYYMMDD</text>
+
+    <text class="name" fill="#166534" y="66">amount</text>
+    <text class="off" x="90" y="66">start 33, length 8, decimal scale 2</text>
+
+    <text class="name" fill="#9f1239" y="88">currency</text>
+    <text class="off" x="90" y="88">start 41, length 3</text>
+  </g>
+
+  <text class="note" x="60" y="288">No delimiters in the file. The schema supplies every boundary, so the same
+    parser reads a 20-byte record and a 5 GB one.</text>
+</svg>

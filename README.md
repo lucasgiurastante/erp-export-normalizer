@@ -1,70 +1,95 @@
 # erp-export-normalizer
 
 [![CI](https://github.com/lucasgiurastante/erp-export-normalizer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasgiurastante/erp-export-normalizer/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/erp-export-normalizer.svg)](https://pypi.org/project/erp-export-normalizer/)
 
-Schema-driven, streaming converter for legacy ERP flat files. Fixed-width
-records (JD Edwards, SAP exports, mainframe dumps) become clean JSON or CSV —
-validated, line-numbered error reports, never loaded fully into memory.
+Legacy ERP exports come out of a mainframe as fixed-width binary with no
+delimiters, one record per line, in a codepage nobody remembers. This reads
+them and writes JSON, CSV, Parquet, Excel or a database table, validating as it
+goes and reporting every bad line with its number, its field and the bytes that
+caused it.
 
-Built for air-gapped environments: no network, no database, no hidden state.
-Same input + same schema = same output. Determinism is the audit guarantee.
+It streams. A 5 GB file costs the same memory as a 5 KB one. It has no
+dependencies beyond PyYAML, opens no sockets, and writes nothing you did not
+ask for. The same input and the same schema always produce the same bytes, which
+is the whole point when the output has to survive an audit.
 
-## Features
+## How a record becomes a row
 
-- **Schema-first** — a YAML file describes the layout; the parser is generic.
-  Knowledge is portable: one shared schema = identical parsing at any company.
-- **Streaming** — multi-GB files processed line by line with constant memory.
-- **Cumulative validation** — collects every error instead of stopping at the
-  first one; report includes the line number of each failure.
-- **Codepage-aware** — fields are sliced by byte offset and decoded per field
-  (UTF-8, CP850, CP1252, Latin-1, EBCDIC-CP037).
-- **Seven output formats** — JSON, CSV, NDJSON, SQL inserts, Parquet (exact
-  `decimal128` for financial values), and Excel (write-only, bounded memory).
-  Plus **Singer** — tap output (SCHEMA/RECORD/STATE), deterministic, ready
-  for Singer targets and Airbyte's CDK.
-- **Zero-dependency web UI** — `serve` runs a local, air-gapped interface for
-  schema generation and conversion preview (stdlib only, binds to 127.0.0.1).
-- **Fixed-width and delimited** — byte-offset slicing or delimiter splitting
-  (`,`/`\t`/`;`/`|`), with optional header rows.
-- **Auto-detection** — omit `--schema`; the tool scores the built-in schema
-  library against your file and picks the best match. Built-in library:
-  `jde_ar`, `jde_ap`, `jde_gl` (JD Edwards), `sap_batch`, `sap_fi_document`,
-  `sap_fi_bseg` (SAP), `jde_gl_distinct`, `cobol_fixed` (EBCDIC mainframe)
-  and `cobol_packed` (EBCDIC with COMP-3 balances).
-- **Schema generation** — `generate-schema` infers a delimited schema (names,
-  types, scale) from an example file.
-- **COBOL copybook import** — `copybook` turns a copybook's `FD`/`PIC` clauses
-  into a ready schema, so the record layout stays in the client's own COBOL
-  source. `COMP-3` packed decimals, `COMP`/`BINARY` and implied decimal points
-  are resolved.
-- **COMP-3 packed decimals** — new `type: packed` for mainframe BCD fields
-  (`PIC S9(7)V99 COMP-3` → 5 bytes, `scale: 2`).
-- **Cross-file reconciliation** — `crosscheck` compares totals, row counts and
-  key sets across two or more exports in bounded memory.
-- **Row-level diff** — `diff` shows what actually changed between two exports:
-  added, removed, and field-level changes, with capped samples and exact counts.
-- **Resumable Singer tap** — `STATE` carries a real bookmark; `--state` resumes
-  an interrupted extract and produces byte-identical output.
-- **Batch + parallel** — glob inputs with `--output-dir`; `--workers N`
-  parallelizes validation with byte-identical output.
-- **Business rules** — schema-level `sum` and `balance` (debits = credits)
-  checks, evaluated in O(1) memory.
-- **Performance gate in CI** — a relative regression gate against a committed
-  baseline, plus an absolute determinism check across worker configurations.
-- **Audit evidence** — `--checksum` writes a SHA-256 sidecar (input/output
-  hashes, schema version, counts, timestamp).
-- **Duplicate key detection** — `--key id` fails a run that repeats a primary
-  key, reporting the line and the first sighting.
-- **Per-field text normalization** — `trim`, `case` and unicode `normalize`
-  (NFC/NFD/NFKC/NFKD) per field, for legacy exports that spell the same
-  value several ways.
-- **PII masking** — `mask: full | partial | hash` per field, so a fixture can
-  be shared without leaking it. Masked values are always strings.
-- **Versioned schema registry** — `registry search` / `registry verify`
-  against a local index with checksums. See
-  [docs/RFC_REGISTRY.md](docs/RFC_REGISTRY.md).
-- **Postgres destination** — `--postgres-dsn` loads records straight into a
-  table in input order, `numeric` for amounts, with a load report.
+The file has no separators. The schema supplies every boundary:
+
+![A 44-byte JD Edwards record sliced into five fields by byte offset](docs/images/record-layout.svg)
+
+```
+format: jde_fixed_width
+record_length: 44
+codepage: cp850
+fields:
+  - {name: id,       start: 0,  length: 10}
+  - {name: type,     start: 10, length: 15}
+  - {name: date,     start: 25, length: 8,  type: date,    format: YYYYMMDD}
+  - {name: amount,   start: 33, length: 8,  type: decimal, scale: 2, align: right}
+  - {name: currency, start: 41, length: 3}
+```
+
+One generic parser reads that, and any other layout you can describe. Delimited
+files work the same way with `delimiter: ","` instead of offsets.
+
+## The pipeline
+
+![Pipeline: read, validate, write, with errors collected on the way](docs/images/pipeline.svg)
+
+The reader holds one record at a time. Records that pass go to the writer;
+records that fail go to the report. Nothing else is buffered, which is why
+memory does not grow with file size and why `--workers 4` produces the same
+bytes as `--workers 1`.
+
+## What it does
+
+**Reading.** Fixed-width by byte offset, or delimited by comma, tab,
+semicolon or pipe, with optional header rows. Fields decode per field, so a
+CP850 export and a UTF-8 export can sit in the same schema. `utf-8`, `cp850`,
+`cp1252`, `latin-1` and `ebcdic-cp037` are supported. `.gz` and `.bz2` inputs
+are decompressed on the way in, detected by their magic bytes rather than
+their extension.
+
+**Mainframe formats.** `type: packed` decodes COMP-3 BCD decimals, and credit
+and debit suffixes (`1234.56CR`, `1234.56DB`) are understood, which is how
+JD Edwards writes signed amounts. `copybook` imports a COBOL copybook's
+`FD`/`PIC` clauses straight into a schema, so the layout stays in the client's
+own source instead of being retyped.
+
+**Validation.** Every line is checked, and checks do not stop at the first
+failure. Beyond type conversion there are per-field constraints (`required`,
+`min`, `max`, `pattern`, `enum`), duplicate key detection with `--key`, an empty
+input check with `--fail-on-empty`, and schema-level `sum` and `balance` rules
+that run in constant memory.
+
+**Output.** JSON, CSV, NDJSON, SQL inserts, Parquet (exact `decimal128` for
+money), Excel with real numeric and date cells, a Singer tap with a resumable
+`STATE`, and a direct Postgres load where amounts stay `numeric`.
+
+**Comparing exports.** `crosscheck` reconciles two or more files on totals, row
+counts, key sets and referential integrity, so an invoice line pointing at a
+customer that does not exist fails the run. `diff` reports what changed between
+two exports, down to the field.
+
+**Schemas.** Ten built-in layouts, auto-detection when you omit `--schema`,
+`generate-schema` to infer one from an example file, and a versioned registry
+index with checksums you can search and verify offline.
+
+**DataFrames and the web.** `read_erp()` loads straight into Pandas, Polars or
+Spark. `serve` starts a local interface for schema generation and conversion
+preview, stdlib only, on `127.0.0.1`.
+
+**Custom binary parsers.** Drop a Python `Reader` in a directory, point
+`--plugins-dir` at it and name it from the schema with `parser: <module>`.
+Validation, error reporting and determinism still apply. The contract is
+frozen in [docs/PLUGIN_API_v1.md](docs/PLUGIN_API_v1.md).
+
+**Audit evidence.** `--checksum` writes a sidecar with the input and output
+hashes, schema version, counts and timestamp. CI gates on a relative performance
+baseline and on an absolute determinism check across worker configurations.
 
 ## Try it now
 
@@ -84,16 +109,9 @@ erp-normalize --schema framed_schema.yaml --input data/framed.bin --output - --f
 ```
 
 Sample data and the full command set live in
-[`examples/`](examples/README.md).
-- **DataFrame integration** — `read_erp()` loads exports straight into
-  Pandas, Polars, or Spark (explicit `decimal128(38, scale)` schema; requires
-  a JVM only at call time).
-- **`--dry-run`** — validate without writing output.
-- **`--verbose`** — per-line diagnostics (`OK`/`ERR` with reasons).
-- **Custom binary parsers (plugins)** — drop a Python `Reader` in `core/plugin_examples/` (or any dir via `--plugins-dir`)
-  and reference it from the schema (`parser: <module>`); validation, error
-  reports and determinism still apply.
-- **Deterministic** — identical input produces identical output, every run.
+[`examples/`](examples/README.md). The full history is in
+[CHANGELOG.md](CHANGELOG.md).
+
 
 ## Installation
 
@@ -103,13 +121,14 @@ Requires Python 3.10+.
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -e .          # core: JSON/CSV/NDJSON/SQL
-pip install -e ".[parquet]"    # + Parquet (pyarrow)
-pip install -e ".[excel]"      # + Excel (openpyxl)
-pip install -e ".[dataframe]"  # + read_erp() (pandas, polars)
-pip install -e ".[spark]"      # + read_erp(backend="spark") (pyspark)
-pip install -e ".[lint]"       # + ruff, mypy (development)
-pip install -e ".[all]"        # everything
+pip install -e .                 # core: JSON, CSV, NDJSON, SQL
+pip install -e ".[parquet]"      # + Parquet (pyarrow)
+pip install -e ".[excel]"        # + Excel (openpyxl)
+pip install -e ".[dataframe]"    # + read_erp() with Pandas and Polars
+pip install -e ".[spark]"        # + read_erp(backend="spark") (pyspark, needs a JVM)
+pip install -e ".[postgres]"     # + --postgres-dsn (psycopg)
+pip install -e ".[dev]"          # + pytest, hypothesis, ruff, mypy, build, twine
+pip install -e ".[all]"          # everything above
 ```
 
 ## Quick start
@@ -202,7 +221,7 @@ fields:
 ```
 
 `normalize: NFKC` folds full-width characters and composed accents. `case`
-and `normalize` only apply to `string` fields — applying them to a decimal
+and `normalize` only apply to `string` fields. Applying them to a decimal
 would silently reorder what the schema says. A masked value is always
 written as a string, so the audit trail cannot imply a number survived.
 
@@ -226,7 +245,7 @@ The importer resolves `PIC` clauses and `USAGE` keywords:
 | `PIC S9(5) COMP` | `decimal`, machine-word width |
 
 `V` is the implied decimal point, so `S9(7)V99` is 7 integer digits plus 2
-decimals — 9 positions. Only `(n)` repeats a position; the `99` after `V` is
+decimals, so 9 positions. Only `(n)` repeats a position; the `99` after `V` is
 two positions, not ninety-nine.
 
 ### Reconciling and diffing two exports
@@ -275,7 +294,7 @@ and per-line diagnostics to stderr:
 
 ## Schema format
 
-`core/formats/jde_ar.yaml` — a JD Edwards Accounts Receivable export:
+`core/formats/jde_ar.yaml`, a JD Edwards Accounts Receivable export:
 
 ```yaml
 format: jde_fixed_width
@@ -306,7 +325,7 @@ Field attributes:
 | `codepage`  | no       | Per-field codepage override                       |
 
 Schema-level attributes: `format`, `version` (required), `record_length`
-(required), `codepage` (default `utf-8`), `description`, and `table` — the
+(required), `codepage` (default `utf-8`), `description`, and `table`; the
 target SQL table name for the `sql` output (validated as an identifier,
 defaults to `export`).
 
@@ -326,7 +345,7 @@ rules:
 
 ### Custom parsers (plugins)
 
-For formats the built-in readers cannot handle — binary records, framed
+For formats the built-in readers cannot handle, such as binary records, framed
 payloads, packed decimals. A plugin is a Python module in `core/plugin_examples/` exposing
 a `Reader` class with a `records()` method yielding `(line_no, record_bytes)`
 (the same contract as `parser.FixedWidthReader`). The schema selects it via
@@ -366,7 +385,7 @@ spark_df = read_erp("export.txt", backend="spark")  # explicit decimal128 schema
 ```
 
 `on_error="ignore"` drops invalid records instead of raising. The Spark
-backend imports lazily — a JVM is needed only when it is called.
+backend imports lazily, so a JVM is needed only when it is called.
 
 ## Exit codes
 
@@ -385,65 +404,71 @@ held records that were all rejected.
 
 ## Architecture
 
-```
-input.txt ──► [fixed-width parser] ──► [converters] ──► [validator] ──► [writer]
-                    │                      │                │              │
-                    │                      ├─ dates          │              ├─ JSON
-                    │                      ├─ decimals       │              └─ CSV
-                    │                      └─ codepages      └─ report
+```mermaid
+flowchart LR
+    F[input file<br/>gz, bz2, fixed-width,<br/>delimited, plugin] --> P[core/parser.py]
+    S[schema.yaml] --> P
+    P --> C[core/converters.py<br/>codepage, types, CR/DB, COMP-3]
+    C --> V[core/validator.py<br/>type + constraints]
+    V --> W[core/writer.py]
+    V --> R[error report<br/>line, field, raw]
+    W --> O[json, csv, ndjson,<br/>sql, parquet, excel,<br/>singer, postgres]
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design document: module
-responsibilities, design rules, user analysis, and the phased roadmap
-(NDJSON/Parquet/SQL, auto-detection, schema registry, semantic validation).
-See [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) for the deep dive:
-parsing internals, conversion semantics, determinism guarantees, and the
-reasoning behind each design decision.
+Everything is streaming, so the boxes that matter are the first two: the
+parser yields one record at a time and the writer consumes it immediately.
+Validation sits in between and never sees more than the current record either.
+
+Beyond this diagram, [ARCHITECTURE.md](ARCHITECTURE.md) covers module
+responsibilities, design rules and the phased roadmap, and
+[docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) goes into parsing
+internals, conversion semantics and the reasoning behind each decision.
 
 ## Development
 
 ```bash
-# run the test suite (stdlib unittest, discovered by pytest too)
+# test suite (stdlib unittest; pytest discovers it too)
 python -m unittest discover -s tests -v
-# or
 pytest
 
-# lint, format, and typecheck (mirrors CI)
+# what CI runs
 ruff check .
 ruff format --check .
 mypy cli.py core
 
-# performance profile: relative regression gate + absolute determinism check
+# performance profile
 python scripts/perf_profile.py --lines 100000 \
   --baseline perf-baseline.json --tolerance 0.5
-# refresh the committed baseline on purpose, not by accident
+# refresh the committed baseline deliberately, not by accident
 python scripts/perf_profile.py --lines 100000 --update-baseline perf-baseline.json
 ```
 
-The performance gate is deliberately **relative**: shared CI runners are
-noisy, and an absolute wall-clock threshold produces flaky failures nobody
-trusts. A baseline recorded on a different machine is detected and the
-regression verdict is **skipped** rather than failed — the difference would be
-hardware, not code. Pass `--require-same-machine` to make that a hard error.
-The determinism check is **absolute** and never relaxes — every worker
-configuration must produce byte-identical output.
+The performance gate is relative on purpose. Shared CI runners are noisy and an
+absolute wall-clock threshold produces flaky failures nobody trusts. A baseline
+recorded on a different machine is detected and the verdict is skipped rather
+than failed, because the difference is hardware rather than code; pass
+`--require-same-machine` to make that a hard error instead. The determinism
+check runs the other way and never relaxes: every worker configuration has to
+produce byte-identical output.
 
 ## Roadmap
 
-- Phase 1 — NDJSON, Parquet, Excel, SQL inserts; heuristic auto-detection;
-  built-in schema library; verbose per-line diagnostics. *(Implemented.)*
-- Phase 2 — parallel processing for multi-GB files, batch globbing, automatic
-  schema inference, Pandas/Polars integration. *(Implemented.)*
-- Phase 3 — shared schema registry, semantic business rules, checksums and
-  conversion summaries for audit evidence. *(Implemented: rules, audit
-  sidecars, local registry verification, and the schema-generation web UI.
-  A centralized community registry remains future.)*
-- Phase 4 — Airbyte/Singer connector, Databricks/Spark connector, SaaS.
-  *(In progress: the Singer tap is done including resumable `STATE`;
-  the Spark `read_erp` backend is done. Hosted SaaS remains out of scope.)*
-- Phase 5 — reconciliation, diffing, COBOL tooling. *(Implemented: `crosscheck`,
-  `diff`, copybook import, COMP-3 packed decimals.)*
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Fixed-width to JSON and CSV, YAML schemas | Done |
+| 1 | NDJSON, Parquet, Excel, SQL, auto-detection, schema library | Done |
+| 2 | Parallel processing, batch globbing, schema inference, DataFrames | Done |
+| 3 | Business rules, audit sidecars, schema registry, web UI | Done |
+| 4 | Singer tap, Spark backend | Done, except hosted SaaS |
+| 5 | Reconciliation, diffing, COBOL tooling | Done |
+
+The centralized schema registry and a hosted SaaS are the two items still open,
+and both are listed as out of scope in
+[INSTRUCTIVO_AGENTE.md](INSTRUCTIVO_AGENTE.md#9-fuera-de-alcance-no-hacer). The
+format a public registry would need is already written up in
+[docs/RFC_REGISTRY.md](docs/RFC_REGISTRY.md), along with what it deliberately
+does not solve.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
