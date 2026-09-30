@@ -22,6 +22,18 @@ classifiers = [
 ]
 dependencies = ["PyYAML>=6.0"]
 
+# The PyPI page is the top of the funnel: someone who arrives via `pip install`
+# needs a way to reach the repo, the issue tracker and the changelog. Without
+# these, PyPI is a dead end and the visits never become stars or issues.
+[project.urls]
+Homepage = "https://github.com/lucasgiurastante/erp-export-normalizer"
+Repository = "https://github.com/lucasgiurastante/erp-export-normalizer"
+Issues = "https://github.com/lucasgiurastante/erp-export-normalizer/issues"
+Changelog = "https://github.com/lucasgiurastante/erp-export-normalizer/blob/main/CHANGELOG.md"
+"Plugin API (frozen v1)" = "https://github.com/lucasgiurastante/erp-export-normalizer/blob/main/docs/PLUGIN_API_v1.md"
+"Copy a flat-file layout" = "https://github.com/lucasgiurastante/erp-export-normalizer/issues/new?title=flat-file+layout%3A&labels=schema+request"
+Bugs = "https://github.com/lucasgiurastante/erp-export-normalizer/issues"
+
 [project.optional-dependencies]
 parquet = ["pyarrow>=14"]
 excel = ["openpyxl>=3.1"]
